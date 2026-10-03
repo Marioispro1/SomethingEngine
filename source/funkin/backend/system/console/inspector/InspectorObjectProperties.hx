@@ -28,6 +28,13 @@ class InspectorObjectProperties {
 	#if IMGUI_ENABLED
 	public var inspector:ConsoleInspector = null;
 	var __edited:Bool = false;
+	var renamePtr = new ImGuiStringPtr("");
+	var fieldFilter = new ImGuiStringPtr("");
+	var animNewName = new ImGuiStringPtr("newAnim");
+	var animNewPrefix = new ImGuiStringPtr("");
+	var animNewFrames = new ImGuiStringPtr("");
+	var animNewFps = new ImGuiFloatPtr(24);
+	var animNewLoop = new ImGuiBoolPtr(false);
 	var boolPool:ImGuiPtrPool<ImGuiBoolPtr> = new ImGuiPtrPool<ImGuiBoolPtr>(function() {return new ImGuiBoolPtr(false);});
 	var floatPool:ImGuiPtrPool<ImGuiFloatPtr> = new ImGuiPtrPool<ImGuiFloatPtr>(function() {return new ImGuiFloatPtr(0.0);});
 	var intPool:ImGuiPtrPool<ImGuiIntPtr> = new ImGuiPtrPool<ImGuiIntPtr>(function() {return new ImGuiIntPtr(0);});
@@ -63,7 +70,19 @@ class InspectorObjectProperties {
 
 			var basic:FlxBasic = selectedObject is FlxBasic ? cast selectedObject : null;
 			if (basic != null) {
+				if (inspector != null) {
+					if (justChanged) renamePtr.value = inspector.editorNames.get(basic) ?? "";
+					ImGui.setNextItemWidth(ImGui.getContentRegionAvail().x * 0.6);
+					if (ImGui.inputTextWithHint("##rename", "name (editor)", renamePtr))
+						inspector.renameObject(basic, renamePtr.value);
+					if (ImGui.button("Order Up##props")) inspector.moveObject(basic, 1);
+					ImGui.sameLine();
+					if (ImGui.button("Order Down##props")) inspector.moveObject(basic, -1);
+					ImGui.sameLine();
+					if (ImGui.button("Duplicate##props")) inspector.duplicateObject(basic);
+				}
 				showFlxBasicProperties(basic);
+				showRawFields(basic);
 				showBehaviorProperties(basic);
 				if (inspector != null && ImGui.button("Delete Object##props"))
 					inspector.deleteInspectorObject(basic);
@@ -187,8 +206,119 @@ class InspectorObjectProperties {
 
 	function showFlxSpriteAnimationProperties(sprite:FlxSprite) {
 		if (ImGui.collapsingHeader("Animation")) {
-			//TODO
-			ImGui.text("Not yet implemented");
+			if (sprite.animation == null || sprite.animation.getAnimationList().length == 0) {
+				ImGui.text("No animations.");
+			} else {
+				ImGui.text("Playing: " + (sprite.animation.curAnim != null ? sprite.animation.curAnim.name : "none"));
+				if (ImGui.beginTable("AnimTable", 5, tableFlags)) {
+					for (a in sprite.animation.getAnimationList()) {
+						ImGui.pushIDFromStr(a.name);
+						ImGui.tableNextRow();
+						ImGui.tableSetColumnIndex(0);
+						ImGui.text(a.name);
+						ImGui.tableSetColumnIndex(1);
+						var wid = ImGui.getContentRegionAvail().x;
+						ImGui.setNextItemWidth(wid);
+						var fs = stringPool.get();
+						fs.value = a.frames.join(",");
+						if (ImGui.inputTextWithHint("##frames", "0,1,2", fs)) {
+							var parsed:Array<Int> = [];
+							for (p in fs.value.split(",")) {
+								var v = Std.parseInt(StringTools.trim(p));
+								if (v != null) parsed.push(v);
+							}
+							if (parsed.length > 0) { a.frames = parsed; __edited = true; if (inspector != null) inspector.markEdited(sprite); }
+						}
+						ImGui.tableSetColumnIndex(2);
+						ImGui.setNextItemWidth(50);
+						var fr = floatPool.get();
+						fr.value = a.frameRate;
+						if (ImGui.dragFloat("##fps", fr, 0.5, 0, 0, "%.0f")) { a.frameRate = fr.value; __edited = true; if (inspector != null) inspector.markEdited(sprite); }
+						ImGui.tableSetColumnIndex(3);
+						var lp = boolPool.get();
+						lp.value = a.looped;
+						if (ImGui.checkbox("##loop", lp)) { a.looped = lp.value; __edited = true; if (inspector != null) inspector.markEdited(sprite); }
+						ImGui.tableSetColumnIndex(4);
+						if (ImGui.button("Play")) sprite.animation.play(a.name, true);
+						ImGui.sameLine();
+						if (ImGui.button("Del")) {
+							sprite.animation.remove(a.name);
+							if (inspector != null) inspector.recordAnimOp(sprite, 'animation.remove("${a.name}")');
+						}
+						ImGui.popID();
+					}
+					ImGui.endTable();
+				}
+			}
+
+			ImGui.separator();
+			ImGui.text("Add animation:");
+			ImGui.setNextItemWidth(90); ImGui.inputTextWithHint("##animName", "name", animNewName);
+			ImGui.sameLine(); ImGui.setNextItemWidth(90); ImGui.inputTextWithHint("##animPrefix", "prefix", animNewPrefix);
+			ImGui.sameLine(); ImGui.setNextItemWidth(70); ImGui.inputTextWithHint("##animFrames", "0,1,2", animNewFrames);
+			ImGui.setNextItemWidth(90); ImGui.dragFloat("fps##animFps", animNewFps, 0.5, 0, 0, "%.0f");
+			ImGui.sameLine(); ImGui.checkbox("loop##animLoop", animNewLoop);
+			if (ImGui.button("Add Animation##animAdd")) {
+				var name = animNewName.value;
+				var prefix = animNewPrefix.value;
+				var framesTxt = animNewFrames.value;
+				var fps = animNewFps.value;
+				var looped = animNewLoop.value;
+				if (name != null && name.length > 0) {
+					if (framesTxt != null && framesTxt.length > 0) {
+						var parsed:Array<Int> = [];
+						for (p in framesTxt.split(",")) {
+							var v = Std.parseInt(StringTools.trim(p));
+							if (v != null) parsed.push(v);
+						}
+						if (parsed.length > 0) {
+							sprite.animation.add(name, parsed, fps, looped);
+							if (inspector != null) inspector.recordAnimOp(sprite, 'animation.add("${ConsoleInspector.escapeHaxe(name)}", ${parsed.toString()}, $fps, $looped)');
+						}
+					} else {
+						sprite.animation.addByPrefix(name, prefix, fps, looped);
+						if (inspector != null) inspector.recordAnimOp(sprite, 'animation.addByPrefix("${ConsoleInspector.escapeHaxe(name)}", "${ConsoleInspector.escapeHaxe(prefix)}", $fps, $looped)');
+					}
+					__edited = true;
+				}
+			}
+		}
+	}
+
+	function showRawFields(basic:FlxBasic) {
+		if (ImGui.collapsingHeader("All Fields (raw)##props")) {
+			var filter = fieldFilter.value;
+			ImGui.inputText("Filter##fields", fieldFilter);
+			if (ImGui.beginTable("FieldsTable", 2, tableFlags)) {
+				var cls = Type.getClass(basic);
+				var fields:Array<String> = cls != null ? Type.getInstanceFields(cls) : [];
+				fields.sort(function(a, b) return a < b ? -1 : (a > b ? 1 : 0));
+				var count = 0;
+				for (f in fields) {
+					if (filter != null && filter.length > 0 && f.indexOf(filter) == -1) continue;
+					var v:Dynamic = null;
+					var ok = try { v = Reflect.getProperty(basic, f); true; } catch(e) { false; }
+					if (!ok) continue;
+					if (++count > 150) {
+						ImGui.tableNextRow();
+						ImGui.tableSetColumnIndex(0);
+						ImGui.text("... truncated");
+						break;
+					}
+					if (Reflect.isFunction(v)) continue;
+					if (v is Bool) checkboxField(f, f, basic);
+					else if (v is Int || v is Float) dragFloatField(f, f, basic, 0.25);
+					else if (v is String) inputTextField(f, f, basic);
+					else {
+						ImGui.tableNextRow();
+						ImGui.tableSetColumnIndex(0);
+						ImGui.text(f);
+						ImGui.tableSetColumnIndex(1);
+						ImGui.text(Std.string(v));
+					}
+				}
+				ImGui.endTable();
+			}
 		}
 	}
 

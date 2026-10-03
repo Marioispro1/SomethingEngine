@@ -71,7 +71,7 @@ class ConsoleInspector {
 	var editorCounter:Int = 0;
 
 	/** Objects created by the editor; used to generate the patch script. */
-	var addedObjects:Array<{obj:FlxBasic, varName:String, typeName:String, createCode:String, parent:FlxGroup}> = [];
+	var addedObjects:Array<{obj:FlxBasic, varName:String, typeName:String, createCode:String, parent:FlxGroup, ?cloneSource:FlxSprite}> = [];
 
 	/** Pre-existing objects whose properties were edited through the inspector. */
 	var editedObjects:Map<FlxBasic, Bool> = [];
@@ -82,11 +82,24 @@ class ConsoleInspector {
 	/** Custom hscript behavior attached to objects (onClick / update). */
 	var objectHooks:Map<FlxBasic, {updateCode:String, clickCode:String, code:String, script:Script}> = [];
 
+	/** Animation operations performed on sprites (method-call bodies, emitted per object). */
+	var animOps:Map<FlxBasic, Array<String>> = [];
+
+	/** Draw-order changes: object, its group and the member index it was moved to. */
+	var moveOps:Array<{obj:FlxBasic, parent:FlxGroup, index:Int}> = [];
+
+	/** Freeform code snippets appended to the patch (phase 0 = create, 1 = update). */
+	var patchSnippets:Array<{code:String, phase:Int}> = [];
+
 	var addKind = new ImGuiIntPtr(0);
 	var addImagePath = new ImGuiStringPtr("");
 	var addTextContent = new ImGuiStringPtr("New Text");
 	var addTextSize = new ImGuiIntPtr(24);
+	var addCustomCode = new ImGuiStringPtr("new flixel.FlxSprite(0, 0, Paths.image('menus/menuBG'))");
+	var codeRunnerText = new ImGuiStringPtr("// 'obj' = selection, 'state' = FlxG.state\ntrace(obj);\n");
+	var codeRunnerPhase = new ImGuiIntPtr(0);
 	var saveStatus:String = "";
+	var runStatus:String = "";
 
 	var currentStateObjects:Array<InspectorObject> = [];
 	var inspectorObjectsThatNeedUpdating:Array<InspectorObject> = [];
@@ -206,17 +219,37 @@ class ConsoleInspector {
 			ImGui.separatorText("State Editor");
 			if (ImGui.collapsingHeader("Add Object##inspector")) {
 				ImGui.indent();
-				ImGui.combo("Type##inspectorAdd", addKind, ["Sprite", "Text", "Button", "Group"]);
+				ImGui.combo("Type##inspectorAdd", addKind, ["Sprite", "Text", "Button", "Group", "Custom (code)"]);
 				switch (addKind.value) {
 					case 0:
 						ImGui.inputText("Image##inspectorAdd", addImagePath);
 					case 1 | 2:
 						ImGui.inputText("Text##inspectorAdd", addTextContent);
 						ImGui.dragInt("Size##inspectorAdd", addTextSize);
+					case 4:
+						ImGui.text("any hscript expr that makes a FlxBasic:");
+						ImGui.inputTextMultiline("##inspectorAddCustom", addCustomCode, ImGui.getContentRegionAvail().x, 60);
 					default:
 				}
 				ImGui.text("(added to selected group, or the state)");
 				if (ImGui.button("Create##inspectorAdd")) createInspectorObject();
+				ImGui.unindent();
+			}
+
+			if (ImGui.collapsingHeader("Code Runner##inspector")) {
+				ImGui.indent();
+				ImGui.text("'obj' = selected object, 'state' = current state");
+				ImGui.inputTextMultiline("##runnerCode", codeRunnerText, ImGui.getContentRegionAvail().x, 110);
+				if (ImGui.button("Run Now##runner")) runSnippet();
+				ImGui.sameLine();
+				ImGui.setNextItemWidth(110);
+				ImGui.combo("##runnerPhase", codeRunnerPhase, ["postCreate", "update"]);
+				ImGui.sameLine();
+				if (ImGui.button("Append to Patch##runner")) {
+					patchSnippets.push({code: codeRunnerText.value, phase: codeRunnerPhase.value});
+					runStatus = "Appended to patch (" + (codeRunnerPhase.value == 0 ? "create" : "update") + ")";
+				}
+				if (runStatus != "") ImGui.text(runStatus);
 				ImGui.unindent();
 			}
 			if (selectedObject != null) {
@@ -374,6 +407,15 @@ class ConsoleInspector {
 				obj = new FlxTypedGroup();
 				typeName = "flixel.group.FlxTypedGroup";
 				code = "new flixel.group.FlxTypedGroup()";
+			case 4:
+				var made = evalSnippet('return ${addCustomCode.value};');
+				if (made is FlxBasic) {
+					obj = cast made;
+					typeName = "Dynamic";
+					code = '(${addCustomCode.value})';
+				} else {
+					saveStatus = "Expr didn't return a FlxBasic";
+				}
 		}
 		if (obj == null) return;
 
@@ -381,6 +423,120 @@ class ConsoleInspector {
 		editorNames.set(obj, varName);
 		addedObjects.push({obj: obj, varName: varName, typeName: typeName, createCode: code, parent: parent});
 		selectObject(obj);
+	}
+
+	/** Evaluates hscript code with 'obj'/'state' bound; returns the __run function result. */
+	function evalSnippet(code:String):Dynamic {
+		runStatus = "";
+		try {
+			var s = Script.fromString('function __run() {\n$code\n}', 'inspector-eval.hx');
+			s.setParent(FlxG.state);
+			s.set("obj", selectedObject);
+			s.set("state", FlxG.state);
+			s.load();
+			var result = s.call("__run");
+			return result is Script ? null : result;
+		} catch(e) {
+			runStatus = 'Error: $e';
+			Logs.error('Inspector eval: $e');
+			return null;
+		}
+	}
+
+	function runSnippet() {
+		evalSnippet(codeRunnerText.value);
+		if (runStatus == "") runStatus = "Ran OK";
+	}
+
+	/** Renames an editor-created object (affects tree label + patch var name). */
+	public function renameObject(obj:FlxBasic, name:String) {
+		if (name == null || name.length == 0) {
+			editorNames.remove(obj);
+			return;
+		}
+		editorNames.set(obj, name);
+		for (a in addedObjects)
+			if (a.obj == obj) a.varName = sanitizeVarName(name);
+	}
+
+	public static function sanitizeVarName(s:String):String {
+		var b = new StringBuf();
+		for (i in 0...s.length) {
+			var c = s.charCodeAt(i);
+			var ok = (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 95;
+			if (i == 0 && c >= 48 && c <= 57) b.addChar(95);
+			b.addChar(ok ? c : 95);
+		}
+		var r = b.toString();
+		return r.length == 0 ? "_obj" : r;
+	}
+
+	/** Moves an object by `dir` slots in its group's draw order. */
+	public function moveObject(obj:FlxBasic, dir:Int) {
+		var parent = findParentGroup(obj, cast FlxG.state);
+		if (parent == null || parent.members == null) return;
+		var i = parent.members.indexOf(obj);
+		if (i == -1) return;
+		var n = i + dir;
+		if (dir < 0 && n < 0) n = 0;
+		if (dir > 0 && n >= parent.members.length) n = parent.members.length - 1;
+		if (n == i) return;
+		parent.members.remove(obj);
+		parent.members.insert(n, obj);
+		moveOps.push({obj: obj, parent: parent, index: n});
+		markEdited(obj);
+	}
+
+	/** Duplicates a sprite/text into the same group. */
+	public function duplicateObject(obj:FlxBasic) {
+		var parent = findParentGroup(obj, cast FlxG.state);
+		if (parent == null) return;
+		var varName = '__editor_${++editorCounter}';
+		var copy:FlxBasic = null;
+		var code:String = null;
+		var typeName:String = "Dynamic";
+		var cloneSource:FlxSprite = null;
+
+		if (obj is FlxText) {
+			var t:FlxText = cast obj;
+			var nt = new FunkinText(t.x, t.y, t.fieldWidth, t.text, t.size);
+			nt.color = t.color;
+			nt.alignment = t.alignment;
+			copy = nt;
+			typeName = "funkin.backend.FunkinText";
+			code = 'new funkin.backend.FunkinText(${t.x}, ${t.y}, ${t.fieldWidth}, "${escapeHaxe(t.text)}", ${t.size})';
+		} else if (obj is FlxSprite) {
+			var s:FlxSprite = cast obj;
+			var ns = new FlxSprite(s.x, s.y);
+			ns.loadGraphicFromSprite(s);
+			for (a in s.animation.getAnimationList())
+				ns.animation.add(a.name, a.frames.copy(), a.frameRate, a.looped, a.flipX, a.flipY);
+			if (s.animation.curAnim != null) ns.animation.play(s.animation.curAnim.name, true);
+			ns.scale.copyFrom(s.scale);
+			ns.updateHitbox();
+			copy = ns;
+			cloneSource = s;
+			typeName = "flixel.FlxSprite";
+			code = "new flixel.FlxSprite(0, 0)";
+		} else if (obj is FlxTypedGroup) {
+			copy = new FlxTypedGroup();
+			typeName = "flixel.group.FlxTypedGroup";
+			code = "new flixel.group.FlxTypedGroup()";
+		}
+		if (copy == null) return;
+
+		parent.add(copy);
+		editorNames.set(copy, varName);
+		addedObjects.push({obj: copy, varName: varName, typeName: typeName, createCode: code, parent: parent, cloneSource: cloneSource});
+		selectObject(copy);
+	}
+
+	/** Records an animation operation for patch export. */
+	public function recordAnimOp(sprite:FlxBasic, op:String) {
+		var ops = animOps.get(sprite);
+		if (ops == null) animOps.set(sprite, ops = []);
+		ops.push(op);
+		markEdited(sprite);
 	}
 
 	public function deleteInspectorObject(obj:FlxBasic) {
@@ -489,7 +645,7 @@ class ConsoleInspector {
 		return h.script;
 	}
 
-	static function escapeHaxe(s:String):String {
+	public static function escapeHaxe(s:String):String {
 		if (s == null) return "";
 		return s.split("\\").join("\\\\").split("\"").join("\\\"").split("\n").join("\\n").split("\r").join("\\r");
 	}
@@ -530,6 +686,15 @@ class ConsoleInspector {
 			buf.add('$expr.size = ${t.size};\n');
 			buf.add('$expr.fieldWidth = ${t.fieldWidth};\n');
 		}
+		if (o is FlxSprite) {
+			var s:FlxSprite = cast o;
+			if (s.animation != null && s.animation.curAnim != null)
+				buf.add('$expr.animation.play("${escapeHaxe(s.animation.curAnim.name)}");\n');
+		}
+		var ops = animOps.get(o);
+		if (ops != null)
+			for (op in ops)
+				buf.add('$expr.$op;\n');
 	}
 
 	function savePatch() {
@@ -572,11 +737,32 @@ class ConsoleInspector {
 			var v = a.varName;
 			decls.add('var $v:Dynamic = null;\n');
 			post.add('$v = ${a.createCode};\n');
+			if (a.cloneSource != null) {
+				var sexpr = exprFor(a.cloneSource);
+				if (sexpr != null) {
+					post.add('$v.loadGraphicFromSprite($sexpr);\n');
+					for (an in a.cloneSource.animation.getAnimationList())
+						post.add('$v.animation.add("${escapeHaxe(an.name)}", ${an.frames.toString()}, ${an.frameRate}, ${an.looped}, ${an.flipX}, ${an.flipY});\n');
+				}
+			}
 			emitObjectProps(post, v, a.obj);
 			var pexpr = (a.parent == null || a.parent == cast state) ? null : exprFor(a.parent);
 			post.add(pexpr == null ? 'add($v);\n' : '$pexpr.add($v);\n');
 			emitObjectHooks(upd, v, a.obj);
 		}
+
+		// draw-order changes replayed last
+		for (m in moveOps) {
+			if (!isInScene(m.obj, cast state)) continue;
+			var e = exprFor(m.obj);
+			if (e == null) continue;
+			var pe = (m.parent == null || m.parent == cast state) ? "" : (exprFor(m.parent) ?? "") + ".";
+			post.add('${pe}insert(${m.index}, ${pe}remove($e));\n');
+		}
+
+		// freeform snippets appended by the user
+		for (sn in patchSnippets)
+			(sn.phase == 0 ? post : upd).add('// code runner snippet\n${sn.code}\n');
 
 		// hooks attached to pre-existing objects that weren't otherwise edited
 		for (o => h in objectHooks) {
