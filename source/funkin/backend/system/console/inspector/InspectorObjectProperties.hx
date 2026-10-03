@@ -26,6 +26,8 @@ using funkin.backend.utils.ImGuiUtil;
 class InspectorObjectProperties {
 
 	#if IMGUI_ENABLED
+	public var inspector:ConsoleInspector = null;
+	var __edited:Bool = false;
 	var boolPool:ImGuiPtrPool<ImGuiBoolPtr> = new ImGuiPtrPool<ImGuiBoolPtr>(function() {return new ImGuiBoolPtr(false);});
 	var floatPool:ImGuiPtrPool<ImGuiFloatPtr> = new ImGuiPtrPool<ImGuiFloatPtr>(function() {return new ImGuiFloatPtr(0.0);});
 	var intPool:ImGuiPtrPool<ImGuiIntPtr> = new ImGuiPtrPool<ImGuiIntPtr>(function() {return new ImGuiIntPtr(0);});
@@ -40,6 +42,7 @@ class InspectorObjectProperties {
 	public function new() {}
 
 	public function show(objectData:InspectorObject, justChanged:Bool) {
+		__edited = false;
 		boolPool.reset();
 		floatPool.reset();
 		intPool.reset();
@@ -61,7 +64,9 @@ class InspectorObjectProperties {
 			var basic:FlxBasic = selectedObject is FlxBasic ? cast selectedObject : null;
 			if (basic != null) {
 				showFlxBasicProperties(basic);
-				//TODO: script stuff here
+				showBehaviorProperties(basic);
+				if (inspector != null && ImGui.button("Delete Object##props"))
+					inspector.deleteInspectorObject(basic);
 			}
 			#if foxlite
 			var foxbasic:FoxBasic = selectedObject is FoxBasic ? cast selectedObject : null;
@@ -71,6 +76,28 @@ class InspectorObjectProperties {
 			#end
 		}
 		ImGui.end();
+
+		if (__edited && inspector != null && objectData.obj is FlxBasic)
+			inspector.markEdited(cast objectData.obj);
+	}
+
+	function showBehaviorProperties(basic:FlxBasic) {
+		if (inspector == null) return;
+		if (ImGui.collapsingHeader("Behavior##props")) {
+			var hooks = inspector.getOrCreateHooks(basic);
+			var wid = ImGui.getContentRegionAvail().x;
+			ImGui.text("On Click (hscript):");
+			var click = stringPool.get();
+			click.value = hooks.clickCode;
+			if (ImGui.inputTextMultiline("##onClickCode", click, wid, 70))
+				hooks.clickCode = click.value;
+			ImGui.text("On Update (elapsed):");
+			var upd = stringPool.get();
+			upd.value = hooks.updateCode;
+			if (ImGui.inputTextMultiline("##onUpdateCode", upd, wid, 70))
+				hooks.updateCode = upd.value;
+			ImGui.text("Use 'obj' for this object; state fields are also\nin scope (postCreate-style). Runs live.");
+		}
 	}
 
 	function showFlxBasicProperties(basic:FlxBasic) {
@@ -240,6 +267,7 @@ class InspectorObjectProperties {
 							case 5:
 								text.borderStyle = OUTLINE_CARDINAL;
 						}
+						__edited = true;
 					}
 
 					switch(text.borderStyle) {
@@ -411,6 +439,7 @@ class InspectorObjectProperties {
 		if (ImGui.dragFloat("##" + name + field, f, speed, min, max, format, flags)) {
 			Reflect.setProperty(object, field, f.value);
 			didChange = true;
+			__edited = true;
 		}
 		return didChange;
 	}
@@ -428,6 +457,7 @@ class InspectorObjectProperties {
 		if (ImGui.dragFloat("##" + name + field, f, speed, min, max, format, flags)) {
 			Reflect.setProperty(object, field, f.value);
 			didChange = true;
+			__edited = true;
 		}
 
 		ImGui.sameLine();
@@ -438,6 +468,7 @@ class InspectorObjectProperties {
 		if (ImGui.dragFloat("##" + name + field2, f2, speed, min, max, format, flags)) {
 			Reflect.setProperty(object, field2, f2.value);
 			didChange = true;
+			__edited = true;
 		}
 		return didChange;
 	}
@@ -455,6 +486,7 @@ class InspectorObjectProperties {
 		if (ImGui.dragFloat("##" + name + field, f, speed, min, max, format, flags)) {
 			Reflect.setProperty(object, field, f.value);
 			didChange = true;
+			__edited = true;
 		}
 
 		ImGui.sameLine();
@@ -465,6 +497,7 @@ class InspectorObjectProperties {
 		if (ImGui.dragFloat("##" + name + field2, f2, speed, min, max, format, flags)) {
 			Reflect.setProperty(object, field2, f2.value);
 			didChange = true;
+			__edited = true;
 		}
 
 		ImGui.sameLine();
@@ -475,6 +508,7 @@ class InspectorObjectProperties {
 		if (ImGui.dragFloat("##" + name + field3, f3, speed, min, max, format, flags)) {
 			Reflect.setProperty(object, field3, f3.value);
 			didChange = true;
+			__edited = true;
 		}
 		return didChange;
 	}
@@ -492,6 +526,7 @@ class InspectorObjectProperties {
 		if (ImGui.sliderFloat("##" + name + field, f, min, max, format, flags)) {
 			Reflect.setProperty(object, field, f.value);
 			didChange = true;
+			__edited = true;
 		}
 		return didChange;
 	}
@@ -509,6 +544,7 @@ class InspectorObjectProperties {
 		if (ImGui.dragInt("##" + name + field, i, speed, min, max, format, flags)) {
 			Reflect.setProperty(object, field, i.value);
 			didChange = true;
+			__edited = true;
 		}
 		return didChange;
 	}
@@ -522,6 +558,7 @@ class InspectorObjectProperties {
 		if (ImGui.checkbox("##" + name + field, b)) {
 			Reflect.setProperty(object, field, b.value);
 			didChange = true;
+			__edited = true;
 		}
 		return didChange;
 	}
@@ -550,6 +587,7 @@ class InspectorObjectProperties {
 		if (ImGui.colorEdit4("##" + name + field, float4, flags)) {
 			Reflect.setProperty(object, field, FlxColor.fromRGBFloat(float4.values[0], float4.values[1], float4.values[2], float4.values[3]));
 			didChange = true;
+			__edited = true;
 		}
 		return didChange;
 	}
@@ -585,6 +623,7 @@ class InspectorObjectProperties {
 		index.value = list.indexOf(Std.string(Reflect.getProperty(object, field)));
 		if (ImGui.combo(name + "##" + field, index, list)) {
 			Reflect.setProperty(object, field, list[index.value]);
+			__edited = true;
 		}
 	}
 	inline function enumAbstractField(name:String, field:String, object:Dynamic, type:String) {
@@ -614,6 +653,7 @@ class InspectorObjectProperties {
 
 			if (ImGui.combo("##" + name + field, index, filteredFields)) {
 				Reflect.setProperty(object, field, Reflect.getProperty(t, filteredFields[index.value]));
+				__edited = true;
 			}
 
 		}

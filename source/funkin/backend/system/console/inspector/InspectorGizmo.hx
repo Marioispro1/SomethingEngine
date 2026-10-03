@@ -14,6 +14,7 @@ import lime.tools.imgui.ImGuiPtr;
 class InspectorGizmo {
 
 	public var gizmoMode:Int = 0;
+	public var objectWasEdited:Bool = false;
 	var lastViewportID:Int = 0;
 	var positionActive:Bool = false;
 	var positionX:Float = 0;
@@ -201,6 +202,7 @@ class InspectorGizmo {
 		var vertActive = ImGui.isItemActive();
 		var vertDragged = ImGui.isItemActive() && ImGui.isMouseDragging(0);
 		if (vertDragged) {
+			objectWasEdited = true;
 			if (!positionActive) {
 				positionX = object.x;
 				positionY = object.y;
@@ -220,6 +222,7 @@ class InspectorGizmo {
 		var horiActive = ImGui.isItemActive();
 		var horiDragged = ImGui.isItemActive() && ImGui.isMouseDragging(0);
 		if (horiDragged) {
+			objectWasEdited = true;
 			if (!positionActive) {
 				positionX = object.x;
 				positionY = object.y;
@@ -239,6 +242,7 @@ class InspectorGizmo {
 		var centerActive = ImGui.isItemActive();
 		var centerDragged = ImGui.isItemActive() && ImGui.isMouseDragging(0);
 		if (centerDragged) {
+			objectWasEdited = true;
 			if (!positionActive) {
 				positionX = object.x;
 				positionY = object.y;
@@ -325,6 +329,7 @@ class InspectorGizmo {
 		var active = ImGui.isItemActive();
 		var dragged = ImGui.isItemActive() && ImGui.isMouseDragging(0);
 		if (dragged) {
+			objectWasEdited = true;
 			var mousePos = ImGui.getMousePos();
 			if (!rotationActive) {
 				rotationActive = true;
@@ -393,6 +398,7 @@ class InspectorGizmo {
 		var vertActive = ImGui.isItemActive();
 		var vertDragged = ImGui.isItemActive() && ImGui.isMouseDragging(0);
 		if (vertDragged) {
+			objectWasEdited = true;
 			if (!scaleActive) {
 				scaleX = sprite.scale.x;
 				scaleY = sprite.scale.y;
@@ -412,6 +418,7 @@ class InspectorGizmo {
 		var horiActive = ImGui.isItemActive();
 		var horiDragged = ImGui.isItemActive() && ImGui.isMouseDragging(0);
 		if (horiDragged) {
+			objectWasEdited = true;
 			if (!scaleActive) {
 				scaleX = sprite.scale.x;
 				scaleY = sprite.scale.y;
@@ -431,6 +438,7 @@ class InspectorGizmo {
 		var centerActive = ImGui.isItemActive();
 		var centerDragged = ImGui.isItemActive() && ImGui.isMouseDragging(0);
 		if (centerDragged) {
+			objectWasEdited = true;
 			if (!scaleActive) {
 				scaleX = sprite.scale.x;
 				scaleY = sprite.scale.y;

@@ -2,7 +2,6 @@
 import data.globals.testlib;
 
 var stateSwitches:Int = 0;
-var beats:Int = 0;
 
 function new() {
 	trace("[TESTSCRIPT] hello from " + engine.name + " v" + Flags.VERSION);
