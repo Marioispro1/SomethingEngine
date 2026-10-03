@@ -38,6 +38,21 @@ class InspectorObjectProperties {
 	var animNewFps = new ImGuiFloatPtr(24);
 	var animNewLoop = new ImGuiBoolPtr(false);
 	var keyTimePtr = new ImGuiFloatPtr(0.5);
+	var presetIdx = new ImGuiIntPtr(0);
+
+	static var HOOK_PRESET_NAMES:Array<String> = [
+		"pulse scale", "spin", "follow mouse", "fade on hover", "shake", "pulse on beat", "bounce on click", "destroy on click"
+	];
+	static var HOOK_PRESET_CODES:Array<String> = [
+		'var s = 1 + 0.06 * Math.sin(FlxG.game.ticks / 300);\nobj.scale.set(s, s);',
+		'obj.angle += 180 * elapsed;',
+		'obj.x = FlxG.mouse.getWorldPosition().x - obj.width / 2;\nobj.y = FlxG.mouse.getWorldPosition().y - obj.height / 2;',
+		'obj.alpha = FlxG.mouse.overlaps(obj) ? 0.5 : 1.0;',
+		'obj.offset.x = FlxG.random.float(-3, 3);\nobj.offset.y = FlxG.random.float(-3, 3);',
+		'var bpm = funkin.backend.system.Conductor.bpm;\nvar beat = (funkin.backend.system.Conductor.songPosition / (60000 / bpm)) % 1;\nvar s = 1 + 0.12 * (1 - beat);\nobj.scale.set(s, s);',
+		'FlxTween.tween(obj.scale, {x: 1.3, y: 1.3}, 0.08, {ease: FlxEase.quadOut})\n	.then(FlxTween.tween(obj.scale, {x: 1.0, y: 1.0}, 0.2, {ease: FlxEase.bounceOut}));',
+		'obj.kill();'
+	];
 	var boolPool:ImGuiPtrPool<ImGuiBoolPtr> = new ImGuiPtrPool<ImGuiBoolPtr>(function() {return new ImGuiBoolPtr(false);});
 	var floatPool:ImGuiPtrPool<ImGuiFloatPtr> = new ImGuiPtrPool<ImGuiFloatPtr>(function() {return new ImGuiFloatPtr(0.0);});
 	var intPool:ImGuiPtrPool<ImGuiIntPtr> = new ImGuiPtrPool<ImGuiIntPtr>(function() {return new ImGuiIntPtr(0);});
@@ -88,6 +103,7 @@ class InspectorObjectProperties {
 				}
 				showFlxBasicProperties(basic);
 				showKeyframes(basic);
+				showCameraSection(basic);
 				showRawFields(basic);
 				showBehaviorProperties(basic);
 				if (inspector != null && ImGui.button("Delete Object##props"))
@@ -121,6 +137,17 @@ class InspectorObjectProperties {
 			upd.value = hooks.updateCode;
 			if (ImGui.inputTextMultiline("##onUpdateCode", upd, wid, 70))
 				hooks.updateCode = upd.value;
+			ImGui.setNextItemWidth(wid);
+			if (ImGui.combo("##hookPreset", presetIdx, HOOK_PRESET_NAMES)) {}
+			if (ImGui.button("Insert into Update##preset")) {
+				hooks.updateCode = StringTools.trim(hooks.updateCode + "\n" + HOOK_PRESET_CODES[presetIdx.value]);
+				inspector.markEdited(basic);
+			}
+			ImGui.sameLine();
+			if (ImGui.button("Insert into Click##preset")) {
+				hooks.clickCode = StringTools.trim(hooks.clickCode + "\n" + HOOK_PRESET_CODES[presetIdx.value]);
+				inspector.markEdited(basic);
+			}
 			ImGui.text("Use 'obj' for this object; state fields are also\nin scope (postCreate-style). Runs live.");
 		}
 	}
@@ -302,7 +329,7 @@ class InspectorObjectProperties {
 		ImGui.setNextItemWidth(95);
 		var modeIdx = intPool.get();
 		modeIdx.value = tr.mode;
-		if (ImGui.combo("##kfMode", modeIdx, ["Once", "Loop", "PingPong", "Reverse"])) { tr.mode = modeIdx.value; inspector.markEdited(basic); }
+		if (ImGui.combo("##kfMode", modeIdx, ["Once", "Loop", "PingPong", "Reverse", "Beats"])) { tr.mode = modeIdx.value; inspector.markEdited(basic); }
 		ImGui.sameLine();
 		ImGui.text('t=' + FlxMath.roundDecimal(tr.t, 2) + "s");
 
@@ -376,6 +403,23 @@ class InspectorObjectProperties {
 				inspector.applyTrack(basic, tr);
 			}
 		}
+	}
+
+	function showCameraSection(basic:FlxBasic) {
+		if (inspector == null || !ImGui.collapsingHeader("Camera##props")) return;
+		var camNames:Array<String> = [];
+		for (i => c in FlxG.cameras.list) camNames.push('Camera $i' + (i == 0 ? ' (default)' : ''));
+		if (camNames.length == 0) { ImGui.text("No cameras."); return; }
+		var ci = intPool.get();
+		ci.value = FlxG.cameras.list.indexOf(basic.camera);
+		if (ci.value < 0) ci.value = 0;
+		ImGui.setNextItemWidth(-1);
+		if (ImGui.combo("Draw on##camPick", ci, camNames)) {
+			basic.cameras = [FlxG.cameras.list[ci.value]];
+			__edited = true;
+			inspector.markEdited(basic);
+		}
+		if (ImGui.isItemHovered()) ImGui.setTooltip("which camera renders this object");
 	}
 
 	function showRawFields(basic:FlxBasic) {

@@ -11,6 +11,7 @@ import funkin.backend.FunkinText;
 import funkin.backend.assets.IModsAssetLibrary;
 import funkin.backend.assets.ModsFolder;
 import funkin.backend.assets.ModsFolderLibrary;
+import funkin.backend.system.Conductor;
 import funkin.backend.scripting.HScript;
 import funkin.backend.scripting.ModState;
 import funkin.backend.scripting.Script;
@@ -46,7 +47,16 @@ typedef InspectorObject = {
 typedef InspectorKeyframe = {t:Float, x:Float, y:Float, angle:Float, scaleX:Float, scaleY:Float, alpha:Float, ease:String};
 
 /** mode: 0 = once, 1 = loop, 2 = pingpong, 3 = reverse-once. patchTrack = live copy inside the loaded patch script. */
+/** mode: 0 = once, 1 = loop, 2 = pingpong, 3 = reverse-once, 4 = loop-in-beats. patchTrack = live copy inside the loaded patch script. */
 typedef InspectorTrack = {keys:Array<InspectorKeyframe>, mode:Int, playing:Bool, t:Float, dir:Int, sel:Int, ?patchTrack:Dynamic};
+
+/** A point-in-time of everything the editor can change (props on live objects + editor metadata). */
+typedef InspectorSnapshot = {
+	props:Map<FlxBasic, {x:Float, y:Float, angle:Float, scaleX:Float, scaleY:Float, alpha:Float, color:Int, visible:Bool}>,
+	names:Map<FlxBasic, String>,
+	hooks:Map<FlxBasic, {c:String, u:String}>,
+	tracks:Map<FlxBasic, {mode:Int, keys:Array<InspectorKeyframe>}>
+};
 
 class ConsoleInspector {
 
@@ -95,6 +105,9 @@ class ConsoleInspector {
 	/** Draw-order changes: object, its group and the member index it was moved to. */
 	var moveOps:Array<{obj:FlxBasic, parent:FlxGroup, index:Int}> = [];
 
+	/** Reparent operations for patch export. */
+	var reparentOps:Array<{obj:FlxBasic, from:FlxGroup, to:FlxGroup}> = [];
+
 	/** Freeform code snippets appended to the patch (phase 0 = create, 1 = update). */
 	var patchSnippets:Array<{code:String, phase:Int}> = [];
 
@@ -110,6 +123,13 @@ class ConsoleInspector {
 
 	/** Force window pos/size for one frame (clears stale docking positions). */
 	public var forceLayout:Bool = false;
+
+	// ---- undo/redo (debounced snapshots of editable state) ----
+	var undoStack:Array<InspectorSnapshot> = [];
+	var redoStack:Array<InspectorSnapshot> = [];
+	var snapBaseline:InspectorSnapshot = null;
+	var snapPending:Bool = false;
+	var snapTimer:Float = 0;
 
 	var easeNames:Array<String> = null;
 
@@ -236,6 +256,9 @@ class ConsoleInspector {
 					for (s in states) if (ImGui.menuItem(s)) openScriptedState(s);
 					ImGui.endMenu();
 				}
+				ImGui.separator();
+				if (ImGui.menuItem("Undo", "Ctrl+Z")) doUndo();
+				if (ImGui.menuItem("Redo", "Ctrl+Y")) doRedo();
 				ImGui.separator();
 				if (ImGui.menuItem("Reload State Scripts")) reloadStateScripts();
 				if (ImGui.menuItem("Save Patch", "writes data/states/<State>.hx")) savePatch();
@@ -434,6 +457,7 @@ class ConsoleInspector {
 							if (ImGui.isItemClicked()) {
 								selectObject(member.obj);
 							}
+							showNodeExtras(member);
 							if (member.members.length > 0) {
 								generateTreeForMembers(nodeID, member);
 							}
@@ -490,6 +514,7 @@ class ConsoleInspector {
 			}
 		}
 
+		tickUndo(FlxG.elapsed);
 		tickKeyTracks(FlxG.elapsed);
 		runObjectHooks();
 	}
@@ -519,12 +544,64 @@ class ConsoleInspector {
 				if (valid && ImGui.isItemClicked()) {
 					selectObject(member.obj);
 				}
+				if (valid) showNodeExtras(member);
 				if (valid && member.members.length > 0) {
 					generateTreeForMembers(nodeID, member);
 				}
 				ImGui.treePop();
 			}
 		}
+	}
+
+	/** Right-click menu + drag-to-reparent attached to a tree node. */
+	function showNodeExtras(member:InspectorObject) {
+		var obj = member.obj;
+		if (ImGui.beginPopupContextItem('ctx_${member.name}_${member.memberIndex}')) {
+			if (ImGui.menuItem("Select")) selectObject(obj);
+			if (obj is FlxBasic) {
+				if (ImGui.menuItem("Duplicate")) duplicateObject(cast obj);
+				if (ImGui.menuItem("Add Keyframe")) addKeyframe(cast obj, 0);
+				if (ImGui.menuItem("Delete")) deleteInspectorObject(cast obj);
+				var e = exprFor(cast obj);
+				if (e != null && ImGui.menuItem('Copy path ($e)')) ImGui.setClipboardText(e);
+			}
+			ImGui.endPopup();
+		}
+		if (obj is FlxBasic && ImGui.beginDragDropSource()) {
+			ImGui.setDragDropPayload(new ImGuiPayload("sne-obj", obj));
+			ImGui.text(member.name);
+			ImGui.endDragDropSource();
+		}
+		if (obj is FlxGroup && ImGui.beginDragDropTarget()) {
+			var p = ImGui.acceptDragDropPayload("sne-obj");
+			if (p != null && p.data is FlxBasic && p.data != obj)
+				reparentObject(cast p.data, cast obj);
+			ImGui.endDragDropTarget();
+		}
+	}
+
+	/** True if `obj` is a group containing `g` (can't reparent into own child). */
+	function groupContainsGroup(obj:FlxBasic, g:FlxGroup):Bool {
+		if (!(obj is FlxGroup)) return false;
+		var og:FlxGroup = cast obj;
+		if (og.members == null) return false;
+		for (m in og.members) {
+			if (m == g) return true;
+			if (groupContainsGroup(m, g)) return true;
+		}
+		return false;
+	}
+
+	public function reparentObject(obj:FlxBasic, newParent:FlxGroup) {
+		if (groupContainsGroup(obj, newParent)) return;
+		var old = findParentGroup(obj, cast FlxG.state);
+		if (old == null || old == newParent) return;
+		old.members.remove(obj);
+		newParent.add(obj);
+		reparentOps.push({obj: obj, from: old, to: newParent});
+		for (a in addedObjects)
+			if (a.obj == obj) a.parent = newParent;
+		markEdited(obj);
 	}
 
 	function selectObject(obj:Dynamic) {
@@ -538,7 +615,10 @@ class ConsoleInspector {
 
 	/** Marks a pre-existing object as edited so it gets written to the patch on save. */
 	public function markEdited(obj:FlxBasic) {
-		if (obj != null) editedObjects.set(obj, true);
+		if (obj != null) {
+			editedObjects.set(obj, true);
+			queueSnapshot();
+		}
 	}
 
 	public function getOrCreateHooks(obj:FlxBasic) {
@@ -607,6 +687,7 @@ class ConsoleInspector {
 		editorNames.set(obj, varName);
 		addedObjects.push({obj: obj, varName: varName, typeName: typeName, createCode: code, parent: parent});
 		selectObject(obj);
+		queueSnapshot();
 	}
 
 	/** Evaluates hscript code with 'obj'/'state' bound; returns the __run function result. */
@@ -734,6 +815,10 @@ class ConsoleInspector {
 	function adoptPatch(state:FlxState) {
 		if (state == lastAdoptedState) return;
 		lastAdoptedState = state;
+		undoStack.resize(0);
+		redoStack.resize(0);
+		snapBaseline = null;
+		snapPending = false;
 		#if sys
 		if (!(state is MusicBeatState)) return;
 		var mbs:MusicBeatState = cast state;
@@ -914,9 +999,10 @@ class ConsoleInspector {
 	function advanceTrack(tr:InspectorTrack, elapsed:Float) {
 		var dur = trackDuration(tr);
 		if (dur <= 0) { tr.playing = false; return; }
-		tr.t += elapsed * tr.dir;
+		// mode 4: t is in beats, driven by Conductor.bpm
+		tr.t += elapsed * tr.dir * (tr.mode == 4 ? (Conductor.bpm / 60) : 1);
 		switch (tr.mode) {
-			case 1:
+			case 1, 4:
 				tr.t = tr.t % dur;
 				if (tr.t < 0) tr.t += dur;
 			case 2:
@@ -1001,6 +1087,131 @@ class ConsoleInspector {
 	}
 
 	/** Runs live keyframe playback + click-to-place capture + scene click-select. Called each frame while the editor is open. */
+	/** Called by every mutating edit; snapshots settle after a short debounce. */
+	public function queueSnapshot() {
+		snapPending = true;
+		if (snapTimer <= 0) snapTimer = 0.8;
+	}
+
+	function collectScene(group:FlxGroup, out:Array<FlxBasic>) {
+		if (group.members == null) return;
+		for (m in group.members) {
+			out.push(m);
+			if (m is FlxGroup) collectScene(cast m, out);
+		}
+	}
+
+	function captureSnapshot():InspectorSnapshot {
+		var props:Map<FlxBasic, {x:Float, y:Float, angle:Float, scaleX:Float, scaleY:Float, alpha:Float, color:Int, visible:Bool}> = [];
+		var all:Array<FlxBasic> = [];
+		var st:FlxState = FlxG.state;
+		while (st != null) {
+			collectScene(cast st, all);
+			st = st.subState;
+		}
+		for (m in all) {
+			if (!(m is FlxObject)) continue;
+			var o:FlxObject = cast m;
+			var s = m is FlxSprite ? (cast m : FlxSprite) : null;
+			props.set(m, {
+				x: o.x, y: o.y, angle: o.angle, visible: m.visible,
+				scaleX: s != null ? s.scale.x : 0, scaleY: s != null ? s.scale.y : 0,
+				alpha: s != null ? s.alpha : 1, color: s != null ? s.color : 0
+			});
+		}
+		var hooks:Map<FlxBasic, {c:String, u:String}> = [];
+		for (o => h in objectHooks) hooks.set(o, {c: h.clickCode, u: h.updateCode});
+		var tracks:Map<FlxBasic, {mode:Int, keys:Array<InspectorKeyframe>}> = [];
+		for (o => tr in keyTracks)
+			tracks.set(o, {mode: tr.mode, keys: [
+				for (k in tr.keys) {t: k.t, x: k.x, y: k.y, angle: k.angle, scaleX: k.scaleX, scaleY: k.scaleY, alpha: k.alpha, ease: k.ease}
+			]});
+		return {props: props, names: editorNames.copy(), hooks: hooks, tracks: tracks};
+	}
+
+	function snapshotsDiffer(a:InspectorSnapshot, b:InspectorSnapshot):Bool {
+		var na = 0, nb = 0;
+		for (_ in a.props.keys()) na++;
+		for (_ in b.props.keys()) nb++;
+		if (na != nb) return true;
+		for (o => p in a.props) {
+			var q = b.props.get(o);
+			if (q == null || p.x != q.x || p.y != q.y || p.angle != q.angle || p.scaleX != q.scaleX || p.scaleY != q.scaleY
+				|| p.alpha != q.alpha || p.color != q.color || p.visible != q.visible) return true;
+		}
+		return false;
+	}
+
+	function applySnapshot(s:InspectorSnapshot) {
+		for (o => p in s.props) {
+			if (!isAliveInScene(o) || !(o is FlxObject)) continue;
+			var ob:FlxObject = cast o;
+			ob.x = p.x;
+			ob.y = p.y;
+			ob.angle = p.angle;
+			o.visible = p.visible;
+			if (o is FlxSprite) {
+				var sp:FlxSprite = cast o;
+				sp.scale.set(p.scaleX, p.scaleY);
+				sp.alpha = p.alpha;
+				sp.color = p.color;
+			}
+		}
+		editorNames = s.names.copy();
+		for (o => h in s.hooks) {
+			var cur = getOrCreateHooks(o);
+			cur.clickCode = h.c;
+			cur.updateCode = h.u;
+			cur.code = null; // force recompile
+		}
+		for (o => td in s.tracks) {
+			var tr = getOrCreateTrack(o);
+			tr.mode = td.mode;
+			tr.keys = [
+				for (k in td.keys) {t: k.t, x: k.x, y: k.y, angle: k.angle, scaleX: k.scaleX, scaleY: k.scaleY, alpha: k.alpha, ease: k.ease}
+			];
+		}
+	}
+
+	public function doUndo() {
+		if (snapBaseline == null || undoStack.length == 0) return;
+		redoStack.push(snapBaseline);
+		snapBaseline = undoStack.pop();
+		applySnapshot(snapBaseline);
+		runStatus = 'Undo (${undoStack.length} left)';
+	}
+
+	public function doRedo() {
+		if (snapBaseline == null || redoStack.length == 0) return;
+		undoStack.push(snapBaseline);
+		snapBaseline = redoStack.pop();
+		applySnapshot(snapBaseline);
+		runStatus = 'Redo (${redoStack.length} left)';
+	}
+
+	function tickUndo(elapsed:Float) {
+		if (snapPending) {
+			snapTimer -= elapsed;
+			if (snapTimer <= 0) {
+				var cur = captureSnapshot();
+				if (snapBaseline == null) {
+					snapBaseline = cur;
+				} else if (snapshotsDiffer(snapBaseline, cur)) {
+					undoStack.push(snapBaseline);
+					if (undoStack.length > 64) undoStack.shift();
+					redoStack.resize(0);
+					snapBaseline = cur;
+				}
+				snapPending = false;
+				snapTimer = 0;
+			}
+		}
+		if (FlxG.keys.pressed.CONTROL && !ImGuiIO.wantCaptureKeyboard) {
+			if (FlxG.keys.justPressed.Z) doUndo();
+			else if (FlxG.keys.justPressed.Y) doRedo();
+		}
+	}
+
 	function tickKeyTracks(elapsed:Float) {
 		if (clickSelect && clickCaptureFor == null && FlxG.mouse.justPressed && !ImGuiIO.wantCaptureMouse
 			&& !gizmo.positionActive && !gizmo.rotationActive && !gizmo.scaleActive) {
@@ -1056,6 +1267,7 @@ class ConsoleInspector {
 			selectedObject = null;
 			selectedObjectData = null;
 		}
+		queueSnapshot();
 	}
 
 	function findParentGroup(obj:FlxBasic, group:FlxGroup):FlxGroup {
@@ -1161,6 +1373,8 @@ class ConsoleInspector {
 
 	function emitObjectProps(buf:StringBuf, expr:String, o:FlxBasic) {
 		buf.add('$expr.visible = ${o.visible};\n');
+		var camIdx = FlxG.cameras.list.indexOf(o.camera);
+		if (camIdx > 0) buf.add('$expr.cameras = [FlxG.cameras.list[$camIdx]];\n');
 		if (o is FlxObject) {
 			var ob:FlxObject = cast o;
 			buf.add('$expr.x = ${ob.x};\n');
@@ -1261,6 +1475,17 @@ class ConsoleInspector {
 			if (e == null) continue;
 			var pe = (m.parent == null || m.parent == cast state) ? "" : (exprFor(m.parent) ?? "") + ".";
 			post.add('${pe}insert(${m.index}, ${pe}remove($e));\n');
+		}
+
+		// reparents replayed after order ops
+		for (r in reparentOps) {
+			if (!isInScene(r.obj, cast state)) continue;
+			var e = exprFor(r.obj);
+			if (e == null) continue;
+			var fe = (r.from == cast state) ? "FlxG.state" : exprFor(r.from);
+			var te = (r.to == cast state) ? "FlxG.state" : exprFor(r.to);
+			if (fe != null && te != null)
+				post.add('// reparent\n$te.add($fe.remove($e));\n');
 		}
 
 		// freeform snippets appended by the user
@@ -1394,8 +1619,8 @@ class ConsoleInspector {
 		+ '		if (o == null || o.exists == false || keys.length == 0 || tr.playing == false) continue;\n'
 		+ '		var dur = keys[keys.length-1].t;\n'
 		+ '		if (dur <= 0) continue;\n'
-		+ '		tr.t += elapsed * tr.dir;\n'
-		+ '		if (tr.mode == 1) { tr.t = tr.t % dur; if (tr.t < 0) tr.t += dur; }\n'
+		+ '		tr.t += elapsed * tr.dir * (tr.mode == 4 ? (funkin.backend.system.Conductor.bpm / 60) : 1);\n'
+		+ '		if (tr.mode == 1 || tr.mode == 4) { tr.t = tr.t % dur; if (tr.t < 0) tr.t += dur; }\n'
 		+ '		else if (tr.mode == 2) {\n'
 		+ '			if (tr.t > dur) { tr.t = dur - (tr.t - dur); tr.dir = -1; }\n'
 		+ '			if (tr.t < 0) { tr.t = -tr.t; tr.dir = 1; }\n'
