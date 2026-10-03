@@ -42,6 +42,12 @@ typedef InspectorObject = {
 	var ?groupParent:InspectorObject;
 }
 
+/** A transform keyframe; `ease` is the FlxEase field name used for the segment to the next key. */
+typedef InspectorKeyframe = {t:Float, x:Float, y:Float, angle:Float, scaleX:Float, scaleY:Float, alpha:Float, ease:String};
+
+/** mode: 0 = once, 1 = loop, 2 = pingpong, 3 = reverse-once */
+typedef InspectorTrack = {keys:Array<InspectorKeyframe>, mode:Int, playing:Bool, t:Float, dir:Int, sel:Int};
+
 class ConsoleInspector {
 
 	var hscript:ConsoleHscript;
@@ -91,6 +97,14 @@ class ConsoleInspector {
 
 	/** Freeform code snippets appended to the patch (phase 0 = create, 1 = update). */
 	var patchSnippets:Array<{code:String, phase:Int}> = [];
+
+	/** Keyframe animation tracks per object. */
+	public var keyTracks:Map<FlxBasic, InspectorTrack> = [];
+
+	/** Object awaiting a click-in-scene keyframe placement. */
+	public var clickCaptureFor:FlxBasic = null;
+
+	var easeNames:Array<String> = null;
 
 	var addKind = new ImGuiIntPtr(0);
 	var addImagePath = new ImGuiStringPtr("");
@@ -449,6 +463,7 @@ class ConsoleInspector {
 			}
 		}
 
+		tickKeyTracks(FlxG.elapsed);
 		runObjectHooks();
 	}
 
@@ -679,6 +694,154 @@ class ConsoleInspector {
 		if (ops == null) animOps.set(sprite, ops = []);
 		ops.push(op);
 		markEdited(sprite);
+	}
+
+	public function getOrCreateTrack(obj:FlxBasic):InspectorTrack {
+		var tr = keyTracks.get(obj);
+		if (tr == null)
+			keyTracks.set(obj, tr = {keys: [], mode: 1, playing: false, t: 0.0, dir: 1, sel: -1});
+		return tr;
+	}
+
+	public function getEaseNames():Array<String> {
+		if (easeNames == null) {
+			easeNames = [];
+			for (f in Type.getClassFields(flixel.tweens.FlxEase))
+				if (Reflect.isFunction(Reflect.field(flixel.tweens.FlxEase, f)))
+					easeNames.push(f);
+			easeNames.sort(function(a, b) return a < b ? -1 : (a > b ? 1 : 0));
+		}
+		return easeNames;
+	}
+
+	public function snapshotKey(obj:FlxBasic, t:Float, ?x:Float, ?y:Float):InspectorKeyframe {
+		var o = obj is FlxObject ? (cast obj : FlxObject) : null;
+		var s = obj is FlxSprite ? (cast obj : FlxSprite) : null;
+		return {
+			t: t,
+			x: x ?? (o != null ? o.x : 0),
+			y: y ?? (o != null ? o.y : 0),
+			angle: o != null ? o.angle : 0,
+			scaleX: s != null ? s.scale.x : 1,
+			scaleY: s != null ? s.scale.y : 1,
+			alpha: s != null ? s.alpha : 1,
+			ease: "quadInOut"
+		};
+	}
+
+	public function addKeyframe(obj:FlxBasic, t:Float, ?x:Float, ?y:Float) {
+		var tr = getOrCreateTrack(obj);
+		var k = snapshotKey(obj, t, x, y);
+		tr.keys.push(k);
+		sortTrack(tr);
+		tr.sel = tr.keys.indexOf(k);
+		markEdited(obj);
+	}
+
+	public function sortTrack(tr:InspectorTrack) {
+		tr.keys.sort(function(a, b) return a.t < b.t ? -1 : (a.t > b.t ? 1 : 0));
+	}
+
+	public function armClickCapture(obj:FlxBasic) {
+		clickCaptureFor = clickCaptureFor == obj ? null : obj;
+	}
+
+	function trackDuration(tr:InspectorTrack):Float {
+		return tr.keys.length == 0 ? 0 : tr.keys[tr.keys.length - 1].t;
+	}
+
+	public function playTrack(tr:InspectorTrack) {
+		tr.playing = !tr.playing;
+		if (!tr.playing) return;
+		var dur = trackDuration(tr);
+		if (tr.mode == 3) {
+			tr.dir = -1;
+			if (tr.t <= 0 || tr.t >= dur) tr.t = dur;
+		} else {
+			tr.dir = 1;
+			if (tr.t >= dur) tr.t = 0;
+		}
+	}
+
+	function advanceTrack(tr:InspectorTrack, elapsed:Float) {
+		var dur = trackDuration(tr);
+		if (dur <= 0) { tr.playing = false; return; }
+		tr.t += elapsed * tr.dir;
+		switch (tr.mode) {
+			case 1:
+				tr.t = tr.t % dur;
+				if (tr.t < 0) tr.t += dur;
+			case 2:
+				if (tr.t > dur) { tr.t = dur - (tr.t - dur); tr.dir = -1; }
+				if (tr.t < 0) { tr.t = -tr.t; tr.dir = 1; }
+			case 3:
+				if (tr.t <= 0) { tr.t = 0; tr.playing = false; }
+			default:
+				if (tr.t >= dur) { tr.t = dur; tr.playing = false; }
+		}
+	}
+
+	/** Evaluates the track at its current time and applies it to the object. */
+	public function applyTrack(obj:FlxBasic, tr:InspectorTrack) {
+		var keys = tr.keys;
+		if (keys.length == 0 || !(obj is FlxObject)) return;
+		var o:FlxObject = cast obj;
+		var a = keys[0];
+		var b = keys[0];
+		var u = 1.0;
+		if (tr.t > keys[0].t) {
+			if (tr.t >= keys[keys.length - 1].t) {
+				a = b = keys[keys.length - 1];
+			} else {
+				for (i in 0...keys.length - 1) {
+					if (tr.t >= keys[i].t && tr.t <= keys[i + 1].t) {
+						a = keys[i];
+						b = keys[i + 1];
+						var span = b.t - a.t;
+						u = span <= 0 ? 1.0 : (tr.t - a.t) / span;
+						if (a.ease != null) {
+							var ef = Reflect.field(flixel.tweens.FlxEase, a.ease);
+							if (ef != null) u = ef(u);
+						}
+						break;
+					}
+				}
+			}
+		}
+		o.x = a.x + (b.x - a.x) * u;
+		o.y = a.y + (b.y - a.y) * u;
+		o.angle = a.angle + (b.angle - a.angle) * u;
+		if (obj is FlxSprite) {
+			var s:FlxSprite = cast obj;
+			s.scale.set(a.scaleX + (b.scaleX - a.scaleX) * u, a.scaleY + (b.scaleY - a.scaleY) * u);
+			s.alpha = a.alpha + (b.alpha - a.alpha) * u;
+		}
+	}
+
+	/** Runs live keyframe playback + click-to-place capture. Called each frame while the editor is open. */
+	function tickKeyTracks(elapsed:Float) {
+		if (clickCaptureFor != null && FlxG.mouse.justPressed && !ImGuiIO.wantCaptureMouse) {
+			var obj = clickCaptureFor;
+			clickCaptureFor = null;
+			var tr = getOrCreateTrack(obj);
+			var wp = FlxG.mouse.getWorldPosition();
+			addKeyframe(obj, trackDuration(tr) + 0.25, wp.x, wp.y);
+			runStatus = 'Key added at ${Math.round(wp.x)}, ${Math.round(wp.y)}';
+		}
+		var dead:Array<FlxBasic> = null;
+		for (obj => tr in keyTracks) {
+			if (!isAliveInScene(obj)) {
+				if (dead == null) dead = [];
+				dead.push(obj);
+				continue;
+			}
+			if (tr.playing) {
+				advanceTrack(tr, elapsed);
+				applyTrack(obj, tr);
+			}
+		}
+		if (dead != null)
+			for (o in dead) keyTracks.remove(o);
 	}
 
 	public function deleteInspectorObject(obj:FlxBasic) {
@@ -922,7 +1085,25 @@ class ConsoleInspector {
 			emitObjectHooks(upd, expr, o);
 		}
 
-		writePatchFile(path, post.toString(), upd.toString(), notes.toString() + decls.toString());
+		// keyframe animation tracks
+		var trackCode = new StringBuf();
+		for (o => tr in keyTracks) {
+			if (tr.keys.length == 0 || !isInScene(o, cast state)) continue;
+			var expr = exprFor(o);
+			if (expr == null) {
+				notes.add('// WARNING: could not resolve a path for an animated ${Type.getClassName(Type.getClass(o))}; keyframes not saved\n');
+				continue;
+			}
+			var parts:Array<String> = [];
+			for (k in tr.keys)
+				parts.push('{t:${k.t},x:${k.x},y:${k.y},angle:${k.angle},sx:${k.scaleX},sy:${k.scaleY},alpha:${k.alpha},ease:flixel.tweens.FlxEase.${k.ease}}');
+			trackCode.add('// keyframe track for $expr\n__snePlayKeys($expr, [${parts.join(", ")}], ${tr.mode});\n');
+		}
+		var trackStr = trackCode.toString();
+		var hasTracks = trackStr.length > 0;
+
+		writePatchFile(path, post.toString() + trackStr, upd.toString() + (hasTracks ? '__sneAnimateKeys(elapsed);\n' : ''),
+			notes.toString() + decls.toString() + (hasTracks ? TRACK_PLAYER_SRC : ''));
 		saveStatus = 'Saved $stateName.hx';
 		Logs.trace('State Editor: wrote patch to $path', SUCCESS, GREEN);
 		#else
@@ -967,6 +1148,50 @@ class ConsoleInspector {
 		}
 		sys.io.File.saveContent(path, content);
 	}
+
+	// Keyframe player emitted into patches when any object has a track.
+	static var TRACK_PLAYER_SRC = 'var __sneKeyTracks = [];\n'
+		+ 'function __snePlayKeys(o, keys, mode) {\n'
+		+ '	var t = (mode == 3) ? (keys.length == 0 ? 0.0 : keys[keys.length-1].t) : 0.0;\n'
+		+ '	__sneKeyTracks.push({o: o, keys: keys, mode: mode, t: t, dir: (mode == 3) ? -1 : 1});\n'
+		+ '}\n'
+		+ 'function __sneAnimateKeys(elapsed) {\n'
+		+ '	for (tr in __sneKeyTracks) {\n'
+		+ '		var keys = tr.keys; var o = tr.o;\n'
+		+ '		if (o == null || o.exists == false || keys.length == 0) continue;\n'
+		+ '		var dur = keys[keys.length-1].t;\n'
+		+ '		if (dur <= 0) continue;\n'
+		+ '		tr.t += elapsed * tr.dir;\n'
+		+ '		if (tr.mode == 1) { tr.t = tr.t % dur; if (tr.t < 0) tr.t += dur; }\n'
+		+ '		else if (tr.mode == 2) {\n'
+		+ '			if (tr.t > dur) { tr.t = dur - (tr.t - dur); tr.dir = -1; }\n'
+		+ '			if (tr.t < 0) { tr.t = -tr.t; tr.dir = 1; }\n'
+		+ '		} else {\n'
+		+ '			if (tr.t > dur) tr.t = dur;\n'
+		+ '			if (tr.t < 0) tr.t = 0;\n'
+		+ '		}\n'
+		+ '		var a = keys[0]; var b = keys[0]; var u = 1.0;\n'
+		+ '		if (tr.t > keys[0].t) {\n'
+		+ '			if (tr.t >= keys[keys.length-1].t) { a = keys[keys.length-1]; b = a; }\n'
+		+ '			else {\n'
+		+ '				for (i in 0...keys.length-1) {\n'
+		+ '					if (tr.t >= keys[i].t && tr.t <= keys[i+1].t) {\n'
+		+ '						a = keys[i]; b = keys[i+1];\n'
+		+ '						var span = b.t - a.t;\n'
+		+ '						u = span <= 0 ? 1.0 : (tr.t - a.t) / span;\n'
+		+ '						if (a.ease != null) u = a.ease(u);\n'
+		+ '						break;\n'
+		+ '					}\n'
+		+ '				}\n'
+		+ '			}\n'
+		+ '		}\n'
+		+ '		o.x = a.x + (b.x - a.x) * u;\n'
+		+ '		o.y = a.y + (b.y - a.y) * u;\n'
+		+ '		o.angle = a.angle + (b.angle - a.angle) * u;\n'
+		+ '		if (Reflect.hasField(o, "scale")) o.scale.set(a.sx + (b.sx - a.sx) * u, a.sy + (b.sy - a.sy) * u);\n'
+		+ '		if (Reflect.hasField(o, "alpha")) o.alpha = a.alpha + (b.alpha - a.alpha) * u;\n'
+		+ '	}\n'
+		+ '}\n';
 
 	function insertScriptCall(src:String, fn:String, call:String, args:String):String {
 		if (src.contains(call)) return src;

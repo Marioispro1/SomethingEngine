@@ -35,6 +35,7 @@ class InspectorObjectProperties {
 	var animNewFrames = new ImGuiStringPtr("");
 	var animNewFps = new ImGuiFloatPtr(24);
 	var animNewLoop = new ImGuiBoolPtr(false);
+	var keyTimePtr = new ImGuiFloatPtr(0.5);
 	var boolPool:ImGuiPtrPool<ImGuiBoolPtr> = new ImGuiPtrPool<ImGuiBoolPtr>(function() {return new ImGuiBoolPtr(false);});
 	var floatPool:ImGuiPtrPool<ImGuiFloatPtr> = new ImGuiPtrPool<ImGuiFloatPtr>(function() {return new ImGuiFloatPtr(0.0);});
 	var intPool:ImGuiPtrPool<ImGuiIntPtr> = new ImGuiPtrPool<ImGuiIntPtr>(function() {return new ImGuiIntPtr(0);});
@@ -82,6 +83,7 @@ class InspectorObjectProperties {
 					if (ImGui.button("Duplicate##props")) inspector.duplicateObject(basic);
 				}
 				showFlxBasicProperties(basic);
+				showKeyframes(basic);
 				showRawFields(basic);
 				showBehaviorProperties(basic);
 				if (inspector != null && ImGui.button("Delete Object##props"))
@@ -281,6 +283,93 @@ class InspectorObjectProperties {
 					}
 					__edited = true;
 				}
+			}
+		}
+	}
+
+	function showKeyframes(basic:FlxBasic) {
+		if (inspector == null) return;
+		if (!ImGui.collapsingHeader("Keyframes##props")) return;
+		var tr = inspector.getOrCreateTrack(basic);
+
+		// playback controls
+		if (ImGui.button(tr.playing ? "Pause##kf" : "Play##kf")) inspector.playTrack(tr);
+		ImGui.sameLine();
+		ImGui.setNextItemWidth(95);
+		var modeIdx = intPool.get();
+		modeIdx.value = tr.mode;
+		if (ImGui.combo("##kfMode", modeIdx, ["Once", "Loop", "PingPong", "Reverse"])) { tr.mode = modeIdx.value; inspector.markEdited(basic); }
+		ImGui.sameLine();
+		ImGui.text('t=' + FlxMath.roundDecimal(tr.t, 2) + "s");
+
+		// key capture row
+		ImGui.setNextItemWidth(70);
+		ImGui.dragFloat("time##kfAddTime", keyTimePtr, 0.01, 0, 0, "%.2f");
+		ImGui.sameLine();
+		if (ImGui.button("Add Key##kf")) inspector.addKeyframe(basic, keyTimePtr.value);
+		if (ImGui.isItemHovered()) ImGui.setTooltip("snapshot the object's transform at this time");
+		ImGui.sameLine();
+		var armed = inspector.clickCaptureFor == basic;
+		if (ImGui.button(armed ? "Click scene!##kf" : "Add @ Mouse##kf")) inspector.armClickCapture(basic);
+		if (ImGui.isItemHovered()) ImGui.setTooltip("arm, then click in the game view to place a position keyframe");
+		ImGui.sameLine();
+		if (tr.sel >= 0 && tr.sel < tr.keys.length && ImGui.button("Del Key##kf")) {
+			tr.keys.splice(tr.sel, 1);
+			tr.sel = -1;
+			inspector.markEdited(basic);
+		}
+
+		// timeline row
+		if (tr.keys.length > 0) {
+			inspector.sortTrack(tr);
+			ImGui.text("Keys:");
+			ImGui.sameLine();
+			for (i => k in tr.keys) {
+				ImGui.pushIDFromInt(i);
+				var lbl = 'K${i}@${FlxMath.roundDecimal(k.t, 1)}' + (tr.sel == i ? "*" : "");
+				if (ImGui.smallButton(lbl)) tr.sel = i;
+				if (ImGui.isItemHovered()) ImGui.setTooltip('t=${k.t} pos=${Math.round(k.x)},${Math.round(k.y)} ease=${k.ease}');
+				ImGui.sameLine();
+				ImGui.popID();
+			}
+			ImGui.text("");
+		}
+
+		// selected keyframe editor
+		if (tr.sel >= 0 && tr.sel < tr.keys.length) {
+			var k = tr.keys[tr.sel];
+			ImGui.separatorText('Keyframe ${tr.sel}');
+			if (ImGui.beginTable("KeyTable", 2, tableFlags)) {
+				if (dragFloatField("Time", "t", k, 0.01)) inspector.markEdited(basic);
+				if (dragFloat2Field("Pos", "x", "y", k, 1)) inspector.markEdited(basic);
+				if (dragFloatField("Angle", "angle", k, 1)) inspector.markEdited(basic);
+				if (dragFloat2Field("Scale", "scaleX", "scaleY", k, 0.01)) inspector.markEdited(basic);
+				if (dragFloatField("Alpha", "alpha", k, 0.01)) inspector.markEdited(basic);
+				ImGui.tableNextRow();
+				ImGui.tableSetColumnIndex(0);
+				ImGui.text("Ease (to next)");
+				ImGui.tableSetColumnIndex(1);
+				ImGui.setNextItemWidth(ImGui.getContentRegionAvail().x);
+				var names = inspector.getEaseNames();
+				var ei = intPool.get();
+				ei.value = names.indexOf(k.ease);
+				if (ei.value < 0) ei.value = 0;
+				if (ImGui.combo("##kfease", ei, names)) {
+					k.ease = names[ei.value];
+					inspector.markEdited(basic);
+				}
+				ImGui.endTable();
+			}
+			if (ImGui.button("Snap pose##kf")) {
+				var nk = inspector.snapshotKey(basic, k.t);
+				k.x = nk.x; k.y = nk.y; k.angle = nk.angle;
+				k.scaleX = nk.scaleX; k.scaleY = nk.scaleY; k.alpha = nk.alpha;
+				inspector.markEdited(basic);
+			}
+			ImGui.sameLine();
+			if (ImGui.button("Preview key##kf")) {
+				tr.t = k.t;
+				inspector.applyTrack(basic, tr);
 			}
 		}
 	}
