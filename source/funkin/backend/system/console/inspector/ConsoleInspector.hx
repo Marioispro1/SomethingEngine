@@ -827,6 +827,10 @@ class ConsoleInspector {
 			buf.add('$expr.text = "${escapeHaxe(t.text)}";\n');
 			buf.add('$expr.size = ${t.size};\n');
 			buf.add('$expr.fieldWidth = ${t.fieldWidth};\n');
+			if (Std.string(t.borderStyle) != "NONE")
+				buf.add('$expr.borderStyle = Type.createEnumIndex(Type.resolveEnum("flixel.text.FlxTextBorderStyle"), ${Type.enumIndex(t.borderStyle)});\n');
+			buf.add('$expr.borderColor = 0x${StringTools.hex(t.borderColor, 8)};\n');
+			buf.add('$expr.borderSize = ${t.borderSize};\n');
 		}
 		if (o is FlxSprite) {
 			var s:FlxSprite = cast o;
