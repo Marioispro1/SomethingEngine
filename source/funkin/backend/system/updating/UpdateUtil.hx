@@ -44,7 +44,7 @@ class UpdateUtil {
 
 	public static function getNameOfExecutable():String
 	{
-		return #if windows "CodenameEngine.exe" #else "CodenameEngine" #end;
+		return #if windows "SomethingEngine.exe" #else "SomethingEngine" #end;
 	}
 
 	public static function getNameOfUpdateExecutable():String

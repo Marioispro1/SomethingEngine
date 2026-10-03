@@ -1,8 +1,8 @@
-# Friday Night Funkin' - Codename Engine
+# Friday Night Funkin' - Something Engine
 
 ![Animated-Banner](https://github.com/user-attachments/assets/5830221d-d954-4be3-afe8-caae364a5881)
 
-Codename Engine is a cross platform [Friday Night Funkin'](https://github.com/FunkinCrew/Funkin) Engine aimed at simplifying modding focusing on softcoding, along with extensiblity and ease of use.<br>
+Something Engine is a cross platform [Friday Night Funkin'](https://github.com/FunkinCrew/Funkin) Engine aimed at simplifying modding focusing on softcoding, along with extensiblity and ease of use.<br>
 It is the the official successor of the previously well known [Yoshi Engine](https://github.com/CodenameCrew/YoshiCrafterEngine).
 
 The engine uses [HaxeFlixel](https://haxeflixel.com/) and it mainly features:
@@ -25,8 +25,8 @@ The engine uses [HaxeFlixel](https://haxeflixel.com/) and it mainly features:
 > We love open source but we also love proper credits for having respect of all the people who worked hard on this project!!
 
 > [!WARNING]
-> Before making issues or if you need help with something, check our website [HERE](https://codename-engine.com/).<br>
-> It contains a wiki of how to mod with EXAMPLES, an api, lists of mods made with Codename Engine and more!
+> Before making issues or if you need help with something, check our website [HERE](https://github.com/Marioispro1/SomethingEngine/).<br>
+> It contains a wiki of how to mod with EXAMPLES, an api, lists of mods made with Something Engine and more!
 
 > [!TIP]
 > Want to stay updated with this project?<br>
@@ -47,7 +47,7 @@ The engine uses [HaxeFlixel](https://haxeflixel.com/) and it mainly features:
 ---
 
 > [!NOTE]
-> Codename Engine as for now supports **Windows x64**, **Mac OS Universal** and **Linux x64**.<br>
+> Something Engine as for now supports **Windows x64**, **Mac OS Universal** and **Linux x64**.<br>
 > More platforms will soon come, stay tuned!<br>
 > - [ ] **Web (HTML5) Support**
 > - [ ] **Mobile Support**
@@ -55,16 +55,16 @@ The engine uses [HaxeFlixel](https://haxeflixel.com/) and it mainly features:
 <details>
   <summary><h2>How to download</h2></summary>
 
-  - Stable builds of the engine can be found on our [GameBanana](https://gamebanana.com/mods/598553) or our [itch.io](https://nex-isdumb.itch.io/codename-engine) pages.
-  - Latest *EXPERIMENTAL* builds of the engine can be found in the [Actions](https://github.com/CodenameCrew/CodenameEngine/actions) tab. **REQUIRES A GITHUB ACCOUNT!!**
+  - Stable builds of the engine can be found on our [GameBanana](https://gamebanana.com/mods/598553) or our [itch.io](https://nex-isdumb.itch.io/something-engine) pages.
+  - Latest *EXPERIMENTAL* builds of the engine can be found in the [Actions](https://github.com/Marioispro1/SomethingEngine/actions) tab. **REQUIRES A GITHUB ACCOUNT!!**
 
-  If you don't have a GitHub account to download experimental builds, you can also go onto our [official website](https://codename-engine.com/) and click the download button for the respective operating system under the **Experimental** section.
+  If you don't have a GitHub account to download experimental builds, you can also go onto our [official website](https://github.com/Marioispro1/SomethingEngine/) and click the download button for the respective operating system under the **Experimental** section.
 </details>
 
 <details>
   <summary><h2>How to mod</h2></summary>
 
-  Check out our wiki [HERE](https://codename-engine.com/wiki/)
+  Check out our wiki [HERE](https://github.com/Marioispro1/SomethingEngine/wiki/)
 </details>
 
 <details>
@@ -80,22 +80,22 @@ The engine uses [HaxeFlixel](https://haxeflixel.com/) and it mainly features:
   - Download and play the engine with its mods and modpacks
   - Mod and fork the engine (without using it for illicit purposes)
   - Contribute to the engine (for example through *Pull Requests*, *Issues*, etc.)
-  - Create a sub engine with Codename Engine as **TEMPLATE** with **CREDITS** (for example leaving the *credits menu submenu with the GitHub contributors* and putting the *[main devs](https://github.com/CodenameCrew)* in a *README* specifying that it's a *sub engine from Codename Engine*)
-  - Release excutable mods that use Codename Engine as source (specifing that uses Codename Engine by for example the same way written above this)
-  - Release Codename Engine modpacks
+  - Create a sub engine with Something Engine as **TEMPLATE** with **CREDITS** (for example leaving the *credits menu submenu with the GitHub contributors* and putting the *[main devs](https://github.com/CodenameCrew)* in a *README* specifying that it's a *sub engine from Something Engine*)
+  - Release excutable mods that use Something Engine as source (specifing that uses Something Engine by for example the same way written above this)
+  - Release Something Engine modpacks
 
   ### Please do not:
-  - Create a *side/new/etc* engine (or mod that doesn't use Codename Engine) using Codename Engine's code
-  - Steal code from Codename Engine for another different project that is not Codename Engine related (Codename Engine mods excluded) without properly crediting
-  - Release the entirety of Codename Engine on platforms (mods that use Codename Engine as source are fine)
+  - Create a *side/new/etc* engine (or mod that doesn't use Something Engine) using Something Engine's code
+  - Steal code from Something Engine for another different project that is not Something Engine related (Something Engine mods excluded) without properly crediting
+  - Release the entirety of Something Engine on platforms (mods that use Something Engine as source are fine)
 
-  #### *If you need more info or feel like asking to do something which is not listed here, ask us directly on our [discord server](https://discord.gg/codename-crew)!*
+  #### *If you need more info or feel like asking to do something which is not listed here, ask us directly on our [discord server](https://discord.gg/something-crew)!*
 </details>
 
 <details>
   <summary><h2>Credits</h2></summary>
 
-- All main Credits can be seen inside the Engine and specifically [HERE](https://github.com/CodenameCrew/CodenameEngine/graphs/contributors)
+- All main Credits can be seen inside the Engine and specifically [HERE](https://github.com/Marioispro1/SomethingEngine/graphs/contributors)
 - Credits to the [FlxAnimate](https://github.com/Dot-Stuff/flxanimate) team for the Animate Atlas support
 - Credits to Smokey555 for the backup Animate Atlas to spritesheet code
 - Credits to MAJigsaw77 for [hxvlc](https://github.com/MAJigsaw77/hxvlc) (video cutscene/mp4 support) and [hxdiscord_rpc](https://github.com/MAJigsaw77/hxdiscord_rpc) (discord rpc integration)

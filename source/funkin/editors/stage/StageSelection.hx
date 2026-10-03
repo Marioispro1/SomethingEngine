@@ -74,7 +74,7 @@ class StageSelectionScreen extends EditorTreeMenuScreen {
 
 		#if sys
 		// Save File
-		CoolUtil.safeSaveFile('${Paths.getAssetsRoot()}/data/stages/${creation.name}.xml', '<!DOCTYPE codename-engine-stage>\n<stage folder="${creation.path}">\n</stage>');
+		CoolUtil.safeSaveFile('${Paths.getAssetsRoot()}/data/stages/${creation.name}.xml', '<!DOCTYPE something-engine-stage>\n<stage folder="${creation.path}">\n</stage>');
 		#end
 
 		// Add to List

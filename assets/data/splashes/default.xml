@@ -1,4 +1,4 @@
-<!DOCTYPE codename-engine-splashes>
+<!DOCTYPE something-engine-splashes>
 <splashes sprite="game/splashes/default" alpha="0.6">
 	<strum id="0"> <!-- LEFT -->
 		<anim name="splashleft1" anim="note impact 1 purple" fps="24" x="0" y="0" />

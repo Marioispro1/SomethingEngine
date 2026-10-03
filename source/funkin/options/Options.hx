@@ -257,7 +257,7 @@ class Options
 
 	public static function load() {
 		var path = haxe.macro.Compiler.getDefine("SAVE_OPTIONS_PATH"), name = haxe.macro.Compiler.getDefine("SAVE_OPTIONS_NAME");
-		if (path == null) path = 'CodenameEngine';
+		if (path == null) path = 'SomethingEngine';
 		if (name == null) name = 'options';
 
 		if (__save == null) __save = new FlxSave();

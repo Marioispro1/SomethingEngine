@@ -274,9 +274,9 @@ class CrashOverlay extends Sprite {
 	}
 
 	function loadBackground():BitmapData {
-		var path = "assets/images/game/codenameerrorbg.png";
+		var path = "assets/images/game/somethingerrorbg.png";
 		try {
-			var resolved = Paths.image("game/codenameerrorbg");
+			var resolved = Paths.image("game/somethingerrorbg");
 			if (resolved != null) path = resolved;
 		} catch (_:Dynamic) {}
 		try {

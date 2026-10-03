@@ -478,7 +478,7 @@
 
 			<group name="Warnings" prefix="warnings.">
 				<str id="notImplemented-title">New Typeface: Feature Not Implemented!</str>
-				<str id="notImplemented-body">This feature isn't implemented yet. Please wait for more cne updates to have this functional.\n\n\n- Codename Crew</str>
+				<str id="notImplemented-body">This feature isn't implemented yet. Please wait for more sne updates to have this functional.\n\n\n- Something Crew</str>
 			</group>
 		</group>
 

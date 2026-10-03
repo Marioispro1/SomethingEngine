@@ -1,4 +1,4 @@
-<!DOCTYPE codename-engine-character>
+<!DOCTYPE something-engine-character>
 <character x="100" y="275" centercam="false" color="#A5004D">
 	<anim name="cheer" anim="GF Cheer"/>
 	<anim name="singUP" anim="GF Up Note"/>

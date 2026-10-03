@@ -3,10 +3,10 @@
 	<!-- ____________________________ Window Settings ___________________________ -->
 
 	<!-- CHANGE THE SAVE PATH & NAME FOR YOUR MOD HERE! -->
-	<haxedef name="SAVE_PATH" value="CodenameEngine"/>
+	<haxedef name="SAVE_PATH" value="SomethingEngine"/>
 	<haxedef name="SAVE_NAME" value="save-default"/>
 
-	<haxedef name="SAVE_OPTIONS_PATH" value="CodenameEngine"/>
+	<haxedef name="SAVE_OPTIONS_PATH" value="SomethingEngine"/>
 	<haxedef name="SAVE_OPTIONS_NAME" value="options"/>
 
 	<!--
@@ -95,9 +95,9 @@
 
 	<!-- _________________________ Application Settings _________________________ -->
 	<app
-		title="Friday Night Funkin' - Codename Engine"
-		file="CodenameEngine" packageName="com.yoshman29.codenameengine"
-		package="com.yoshman29.codenameengine"
+		title="Friday Night Funkin' - Something Engine"
+		file="SomethingEngine" packageName="com.yoshman29.somethingengine"
+		package="com.yoshman29.somethingengine"
 		version="1.1.0" company="Yoshman29"/>
 
 	<!--Switch Export with Unique ApplicationID and Icon-->

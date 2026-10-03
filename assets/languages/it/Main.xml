@@ -40,7 +40,7 @@
 	</group>
 
 	<group name="Credits">
-		<group name="CreditsCodename">
+		<group name="CreditsSomething">
 			<str id="credits.mainDev" notrim="true"> *- Membro pubblico dei Devs principali!*</str>
 			<str id="credits.totalContributions">Contributi totali: ~{0}~ / *{1}* (~{2}%~) - Seleziona per aprire l'account GitHub</str>
 			<str id="credits.downloadingList">Download dell'elenco...</str>
@@ -49,7 +49,7 @@
 		<group name="CreditsMain">
 			<str id="credits.name">Crediti</str>
 			<str id="credits.madePossible">Le persone che hanno reso tutto questo possibile!</str>
-			<str id="credits.selectCodename">Seleziona qui per vedere tutti i collaboratori dell'engine!</str>
+			<str id="credits.selectSomething">Seleziona qui per vedere tutti i collaboratori dell'engine!</str>
 			<str id="credits.selectBase">Seleziona qui per aprire la pagina itch.io del gioco originale e fare una donazione!</str>
 		</group>
 	</group>

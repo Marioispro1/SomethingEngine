@@ -1,4 +1,4 @@
-<!DOCTYPE codename-engine-character>
+<!DOCTYPE something-engine-character>
 <character sprite="mom" icon="mom" color="#D8558E">
 	<anim name="idle" anim="Mom Idle" x="0" y="0" fps="24" loop="false"/>
 	<anim name="singUP" anim="Mom Up Pose" x="13" y="67" fps="24" loop="false"/>

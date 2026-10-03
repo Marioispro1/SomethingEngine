@@ -24,7 +24,7 @@ class FunkinSave {
 
 	public static function init() {
 		var path = Flags.SAVE_PATH, name = Flags.SAVE_NAME;
-		if (path == null) path = 'CodenameEngine';
+		if (path == null) path = 'SomethingEngine';
 		if (name == null) name = 'save-default';
 
 		if (save == null) save = new FlxSave();

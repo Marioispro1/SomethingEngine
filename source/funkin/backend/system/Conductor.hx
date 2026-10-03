@@ -119,7 +119,7 @@ final class Conductor
 	/**
 	 * Number of steps per beat. Defaults to 4.
 	 * Not a divisor number for time signature, it does the complete opposite.
-	 * It's because CNE Conductor is based in sixteenth note instead of beat.
+	 * It's because SNE Conductor is based in sixteenth note instead of beat.
 	 */
 	public static var stepsPerBeat(get, never):Int;
 	private static function get_stepsPerBeat()
@@ -356,7 +356,7 @@ final class Conductor
 	}
 
 	private static function __updateSongPos(elapsed:Float) {
-		if (FlxG.sound.music != null) { // CNE FlxSound is Interpolated.
+		if (FlxG.sound.music != null) { // SNE FlxSound is Interpolated.
 			lastSongPos = FlxG.sound.music.time - songOffset;
 			if (FlxG.sound.music.playing) songPosition = FlxG.sound.music.time;
 		}

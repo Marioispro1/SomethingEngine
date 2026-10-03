@@ -6,7 +6,7 @@ typedef ChartData = {
 	public var strumLines:Array<ChartStrumLine>;
 	public var events:Array<ChartEvent>;
 	public var meta:ChartMetaData;
-	public var codenameChart:Bool;
+	public var somethingChart:Bool;
 	public var stage:String;
 	public var scrollSpeed:Float;
 	public var noteTypes:Array<String>;

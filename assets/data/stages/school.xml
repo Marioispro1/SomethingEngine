@@ -1,4 +1,4 @@
-<!DOCTYPE codename-engine-stage>
+<!DOCTYPE something-engine-stage>
 <stage zoom="1" folder="stages/school/" startCamPosY="550" startCamPosX="600">
 	<use-extension script="pixel"/>
 

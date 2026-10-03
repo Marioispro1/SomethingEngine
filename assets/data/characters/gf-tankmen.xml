@@ -1,4 +1,4 @@
-<!DOCTYPE codename-engine-character>
+<!DOCTYPE something-engine-character>
 <character sprite="gf-tankmen" icon="gf" centercam="false" color="#A5004D">
 	<anim name="danceLeft" anim="GF Dancing at Gunpoint" indices="0..14"/>
 	<anim name="danceRight" anim="GF Dancing at Gunpoint" indices="15..30"/>

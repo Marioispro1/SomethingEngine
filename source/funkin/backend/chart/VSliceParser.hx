@@ -24,7 +24,7 @@ class VSliceParser {
 				meta: {name: null},
 				scrollSpeed: Reflect.field(chartData.scrollSpeed, diff),
 				stage: Flags.DEFAULT_STAGE,
-				codenameChart: true
+				somethingChart: true
 			};
 			parseChart(Reflect.field(chartData.notes, diff), metaData, chartData.events, base, resultMeta);
 			resultCharts.push({diffName: diff, chart: base});
@@ -232,7 +232,7 @@ class VSliceParser {
 			artist: "",
 			timeChanges: defTimeCh,
 			looped: false,
-			generatedBy: 'V-Slice Chart Importer (Codename Engine)',
+			generatedBy: 'V-Slice Chart Importer (Something Engine)',
 			version: Flags.VSLICE_SONG_METADATA_VERSION,
 			playData: {
 				stage: defStage,

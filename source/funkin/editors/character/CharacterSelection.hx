@@ -71,7 +71,7 @@ class CharacterSelectionScreen extends EditorTreeMenuScreen {
 
 		// Save Data file
 		var characterPath:String = '${Paths.getAssetsRoot()}/data/characters/${name}.xml';
-		CoolUtil.safeSaveFile(characterPath, "<!DOCTYPE codename-engine-character>\n" + Printer.print(xml, true));
+		CoolUtil.safeSaveFile(characterPath, "<!DOCTYPE something-engine-character>\n" + Printer.print(xml, true));
 
 		// Save Image files 
 		for(data in imageSaveDatas)

@@ -1,4 +1,4 @@
-<!DOCTYPE codename-engine-character>
+<!DOCTYPE something-engine-character>
 <character x="-500" sprite="parents-christmas" icon="parents-christmas" color="#C45EAE">
 	<!--Dad Animations-->
 	<anim name="idle" anim="Parent Christmas Idle" x="0" y="0" fps="24" loop="false"/>

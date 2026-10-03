@@ -17,14 +17,14 @@ import lime.utils.AssetType;
 class Flags {
 	public static var overridenFlags:Map<String, Bool> = [];
 
-	// -- Codename's Addon Config --
+	// -- Something's Addon Config --
 	@:bypass public static var addonFlags:Map<String, Dynamic> = [];
 	public static var CURRENT_API_VERSION:Int = 3;
 
-	// -- Codename's ZipFolderLibrary Config --
+	// -- Something's ZipFolderLibrary Config --
 	public static var ALLOWED_ZIP_EXTENSIONS:Array<String> = ["zip"];
 
-	// -- Codename's Mod Config --
+	// -- Something's Mod Config --
 	public static var MOD_NAME:String = "";
 	public static var MOD_DESCRIPTION:String = "";
 	public static var MOD_AUTHOR:String = "";
@@ -43,7 +43,7 @@ class Flags {
 
 	public static var MOD_REDIRECT_STATES:Map<String, String> = [];
 
-	// -- Codename's Default Flags --
+	// -- Something's Default Flags --
 	@:lazy public static var SAVE_PATH:String = haxe.macro.Compiler.getDefine("SAVE_PATH");
 	@:lazy public static var SAVE_NAME:String = haxe.macro.Compiler.getDefine("SAVE_NAME");
 
@@ -55,10 +55,10 @@ class Flags {
 	@:lazy public static var TITLE:String = Application.current.meta.get('name');
 	@:lazy public static var VERSION:String = Application.current.meta.get('version');
 
-	@:lazy public static var VERSION_MESSAGE:String = 'Codename Engine v$VERSION';
+	@:lazy public static var VERSION_MESSAGE:String = 'Something Engine v$VERSION';
 
-	public static var REPO_NAME:String = "CodenameEngine";
-	public static var REPO_OWNER:String = "CodenameCrew";
+	public static var REPO_NAME:String = "SomethingEngine";
+	public static var REPO_OWNER:String = "Marioispro1";
 	public static var REPO_URL:String = 'https://github.com/$REPO_OWNER/$REPO_NAME';
 
 	@:lazy public static var PATHS_CACHE_LIFETIME:Null<Int> = null;
@@ -79,7 +79,7 @@ class Flags {
 
 	public static var DEFAULT_DISCORD_LOGO_KEY:String = "icon";
 	public static var DEFAULT_DISCORD_CLIENT_ID:String = "1383853614589673472";
-	public static var DEFAULT_DISCORD_LOGO_TEXT:String = "Codename Engine";
+	public static var DEFAULT_DISCORD_LOGO_TEXT:String = "Something Engine";
 
 	@:also(funkin.game.Character.FALLBACK_CHARACTER)
 	public static var DEFAULT_CHARACTER:String = "bf";
@@ -227,7 +227,7 @@ class Flags {
 
 	public static var VOCAL_OFFSET_VIOLATION_THRESHOLD:Float = 25;
 
-	// Usage: Codename Credits
+	// Usage: Something Credits
 	public static var MAIN_DEVS_COLOR:FlxColor = 0xFF9C35D5;
 	public static var MIN_CONTRIBUTIONS_COLOR:FlxColor = 0xFFB4A7DA;
 
@@ -247,7 +247,7 @@ class Flags {
 	@:also(funkin.game.GameOverSubstate.script)
 	public static var DEFAULT_GAMEOVER_SCRIPT:String = "";
 
-	public static var URL_WIKI:String = "https://codename-engine.com/";
+	public static var URL_WIKI:String = "https://github.com/Marioispro1/SomethingEngine/";
 	public static var URL_EDITOR_FALLBACK:String = "https://www.youtube.com/watch?v=9Youam7GYdQ";
 	public static var URL_FNF_ITCH:String = "https://ninja-muffin24.itch.io/funkin";
 
@@ -303,10 +303,10 @@ class Flags {
 	@:lazy public static var DEFAULT_GLSL_VERSION:String = null;
 	@:also(funkin.backend.utils.HttpUtil.userAgent)
 	public static var USER_AGENT:String = 'request';
-	// -- End of Codename's Default Flags --
+	// -- End of Something's Default Flags --
 
 	/**
-	 * Flags that Codename couldn't recognize as it's own defaults (they can only be `string`! due to them being unparsed).
+	 * Flags that Something couldn't recognize as it's own defaults (they can only be `string`! due to them being unparsed).
 	 */
 	@:bypass public static var customFlags:Map<String, String> = [];
 

@@ -291,7 +291,7 @@ class AlphabetEditor extends UIState {
 		if(Framerate.isLoaded) {
 			Framerate.fpsCounter.alpha = 0.4;
 			Framerate.memoryCounter.alpha = 0.4;
-			Framerate.codenameBuildField.alpha = 0.4;
+			Framerate.somethingBuildField.alpha = 0.4;
 		}
 
 		DiscordUtil.call("onEditorLoaded", ["Alphabet Editor", __typeface]);
@@ -302,7 +302,7 @@ class AlphabetEditor extends UIState {
 		if(Framerate.isLoaded) {
 			Framerate.fpsCounter.alpha = 1;
 			Framerate.memoryCounter.alpha = 1;
-			Framerate.codenameBuildField.alpha = 1;
+			Framerate.somethingBuildField.alpha = 1;
 		}
 	}
 
@@ -479,7 +479,7 @@ class AlphabetEditor extends UIState {
 
 	function buildAlphabet() {
 		var tempPrettyPrint = true;
-		var xmlThingYea:String = "<!DOCTYPE codename-engine-alphabet-font>\n" + Printer.print(tape.buildXML(), tempPrettyPrint);
+		var xmlThingYea:String = "<!DOCTYPE something-engine-alphabet-font>\n" + Printer.print(tape.buildXML(), tempPrettyPrint);
 		return tempPrettyPrint ? xmlThingYea : xmlThingYea.replace("\n", "");
 	}
 

@@ -1,4 +1,4 @@
-<!DOCTYPE codename-engine-character>
+<!DOCTYPE something-engine-character>
 <character x="115" y="-85" sprite="pico-speakers" camx="195" camy="360" icon="pico" color="#B7D855">
 	<anim name="idle1" anim="Pico shoot 1" x="0" y="0" fps="24" loop="false" indices="4..24"/>
 	<anim name="idle2" anim="Pico shoot 2" x="0" y="0" fps="24" loop="false" indices="4..24"/>

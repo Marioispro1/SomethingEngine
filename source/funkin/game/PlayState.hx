@@ -572,7 +572,7 @@ class PlayState extends MusicBeatState
 	public var noteTypesArray:Array<String> = [null];
 
 	/**
-	 * Hit window, in milliseconds. A Legacy CNE Hit window configuration,
+	 * Hit window, in milliseconds. A Legacy SNE Hit window configuration,
 	 * Don't use this, it's for mods that still uses the old judgement timing, instead use ratingManager.
 	 */
 	public var hitWindow:Float = Options.hitWindow;

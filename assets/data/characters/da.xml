@@ -1,4 +1,4 @@
-<!DOCTYPE codename-engine-character>
+<!DOCTYPE something-engine-character>
 <character isPlayer="false" flipX="false" holdTime="6.1" icon="dad" y="150" color="#AF66CE">
 	<anim name="idle"           anim="Dad idle dance"      fps="24" loop="false" x="0" y="0"/>
 	<anim name="singUP"         anim="Dad Sing note UP"    fps="24" loop="false" x="-2" y="50"/>

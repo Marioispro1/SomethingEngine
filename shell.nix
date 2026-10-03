@@ -24,7 +24,7 @@ let
     ]);
 in
 pkgs.mkShell {
-  name = "CodenameEngine";
+  name = "SomethingEngine";
 
   packages = with pkgs; [
     haxe

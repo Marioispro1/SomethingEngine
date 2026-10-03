@@ -1,4 +1,4 @@
-<!DOCTYPE codename-engine-dialogue>
+<!DOCTYPE something-engine-dialogue>
 <dialogue box="hating-simulator">
 	<!-- All characters -->
 	<char name="senpai" char="senpai" position="left" />

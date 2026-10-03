@@ -449,7 +449,7 @@
 
 				<group name="Warnings" prefix="warnings.">
 					<str id="notImplemented-title">Nuova Tipologia di Caratteri: Aggiunta non implementata!</str>
-					<str id="notImplemented-body">Questa aggiunta non è ancora stata implementata. Per favore aspetta nuovi aggiornamenti di CNE per poterla utilizzare.\n\n\n- Codename Crew</str>
+					<str id="notImplemented-body">Questa aggiunta non è ancora stata implementata. Per favore aspetta nuovi aggiornamenti di SNE per poterla utilizzare.\n\n\n- Something Crew</str>
 				</group>
 			</group>
 

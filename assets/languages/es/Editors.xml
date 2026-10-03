@@ -438,7 +438,7 @@
 
 			<group name="Warnings" prefix="warnings.">
 				<str id="notImplemented-title">Nueva Fuente: ¡Función No Implementada!</str>
-				<str id="notImplemented-body">Ésta función todavía no fue implementada. Por favor espera a más actualizaciones de Codename.\n\n\n- Codename Crew</str>
+				<str id="notImplemented-body">Ésta función todavía no fue implementada. Por favor espera a más actualizaciones de Something.\n\n\n- Something Crew</str>
 			</group>
 		</group>
 

@@ -1,4 +1,4 @@
-<!DOCTYPE codename-engine-stage>
+<!DOCTYPE something-engine-stage>
 <stage zoom="0.9" name="limo" folder="stages/limo/" startCamPosY="400">
 	<!-- BG LIMOS !-->
 	<sprite name="skyBG" x="-120" y="-50" sprite="limoSunset" scroll="0.1" zoomfactor="0"/>

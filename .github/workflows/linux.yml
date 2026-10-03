@@ -53,16 +53,16 @@ jobs:
           haxelib run lime rebuild linux -nocolor -release
           haxelib run lime build linux -DCOMPILE_EXPERIMENTAL
       # - name: Tar files
-      #   run: tar -zcvf CodenameEngine.tar.gz -C export/release/linux/bin .
+      #   run: tar -zcvf SomethingEngine.tar.gz -C export/release/linux/bin .
       - name: Uploading artifact (executable)
         uses: actions/upload-artifact@v7
         with:
-          name: Codename Engine (Executable Only)
-          path: export/release/linux/bin/CodenameEngine
+          name: Something Engine (Executable Only)
+          path: export/release/linux/bin/SomethingEngine
       - name: Uploading artifact (entire build)
         uses: actions/upload-artifact@v7
         with:
-          name: Codename Engine
+          name: Something Engine
           path: export/release/linux/bin/
       # - name: Clearing already existing cache
       #   uses: actions/github-script@v9
@@ -136,11 +136,11 @@ jobs:
           haxelib run lime rebuild linux -nocolor -release
           haxelib run lime build linux -debug -DCOMPILE_EXPERIMENTAL
       # - name: Tar files
-      #   run: tar -zcvf CodenameEngine.tar.gz -C export/debug/linux/bin .
+      #   run: tar -zcvf SomethingEngine.tar.gz -C export/debug/linux/bin .
       - name: Uploading artifact (entire build)
         uses: actions/upload-artifact@v7
         with:
-          name: Codename Engine Debug
+          name: Something Engine Debug
           path: export/debug/linux/bin/
       # - name: Clearing already existing cache
       #   uses: actions/github-script@v9

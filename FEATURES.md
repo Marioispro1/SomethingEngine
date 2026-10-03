@@ -1,5 +1,5 @@
-# Codename Engine features
-This markdown file contains most of the main features Codename has, separated into multiple categories.
+# Something Engine features
+This markdown file contains most of the main features Something has, separated into multiple categories.
 
 _**QOL = Quality of Life**_
 
@@ -45,7 +45,7 @@ _**QOL = Quality of Life**_
         - Offsets are automatically fixed. That means changes such as scaling, rotation, and playing as an opponent character wont break them.
     - Entirely new song structure (`songs/name/`)
         - Usage of `meta.json`, which allows you to synchronize data between charts and the Freeplay menu.
-            - Charts can use their own by specifying `meta` in the JSON (Codename charts only)
+            - Charts can use their own by specifying `meta` in the JSON (Something charts only)
         - Charts are now located in `songs/name/charts/`, and are named after the difficulty `hard.json` instead of `name-hard.json`
             - Difficulties are auto-detected in case they aren't specified in the `meta.json` file.
         - Scripts are located in `songs/name/scripts/`, and only applies to the current song.

@@ -401,7 +401,7 @@ class SongCreationScreen extends UISubstateWindow {
 						meta: {name: songId},
 						scrollSpeed: Flags.DEFAULT_SCROLL_SPEED,
 						stage: Flags.DEFAULT_STAGE,
-						codenameChart: true
+						somethingChart: true
 					};
 					PsychParser.parse(oldChart, base);
 					var meta = formatMeta({

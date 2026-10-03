@@ -10,4 +10,4 @@ else
 fi
 
 echo "The XML file for the API documentation has been generated at docs/doc.xml."
-echo "For updating the API documentation hosted at the website, please replace codename-website/api-generator/api/doc.xml with the file listed above."
+echo "For updating the API documentation hosted at the website, please replace something-website/api-generator/api/doc.xml with the file listed above."

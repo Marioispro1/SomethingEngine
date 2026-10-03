@@ -149,7 +149,7 @@ class AsyncUpdater {
 		progress.step = PREPARING;
 
 		#if windows
-		path = '${Sys.getEnv("TEMP")}\\Codename Engine\\Updater\\';
+		path = '${Sys.getEnv("TEMP")}\\Something Engine\\Updater\\';
 		#else
 		path = '.temp/';
 		#end

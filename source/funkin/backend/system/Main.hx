@@ -296,7 +296,7 @@ class Main extends Sprite
 	#end
 	private static function initImGui() {
 		#if IMGUI_ENABLED
-		//codename styled
+		//something styled
 		var vcrFont = ImGuiIO.fonts.addFontFromFileTTF("assets/fonts/vcr.ttf");
 		ImGuiIO.fontDefault = vcrFont;
 		var style = ImGui.getStyle();

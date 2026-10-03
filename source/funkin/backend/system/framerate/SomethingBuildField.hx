@@ -3,7 +3,7 @@ package funkin.backend.system.framerate;
 import funkin.backend.system.macros.GitCommitMacro;
 import openfl.text.TextField;
 
-class CodenameBuildField extends TextField {
+class SomethingBuildField extends TextField {
 	public function new() {
 		super();
 		autoSize = LEFT;

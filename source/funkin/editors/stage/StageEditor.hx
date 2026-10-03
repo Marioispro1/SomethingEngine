@@ -276,7 +276,7 @@ class StageEditor extends UIState {
 		if(Framerate.isLoaded) {
 			Framerate.fpsCounter.alpha = 0.4;
 			Framerate.memoryCounter.alpha = 0.4;
-			Framerate.codenameBuildField.alpha = 0.4;
+			Framerate.somethingBuildField.alpha = 0.4;
 		}
 
 		// DiscordUtil.call("onEditorLoaded", ["Stage Editor", __stage]);
@@ -414,7 +414,7 @@ class StageEditor extends UIState {
 		if(Framerate.isLoaded) {
 			Framerate.fpsCounter.alpha = 1;
 			Framerate.memoryCounter.alpha = 1;
-			Framerate.codenameBuildField.alpha = 1;
+			Framerate.somethingBuildField.alpha = 1;
 		}
 	}
 
@@ -680,7 +680,7 @@ class StageEditor extends UIState {
 			}
 		}
 
-		var xmlThingYea:String = "<!DOCTYPE codename-engine-stage>\n" + Printer.print(xml, Options.editorStagePrettyPrint);
+		var xmlThingYea:String = "<!DOCTYPE something-engine-stage>\n" + Printer.print(xml, Options.editorStagePrettyPrint);
 		return Options.editorStagePrettyPrint ? xmlThingYea : xmlThingYea.replace("\n", "");
 	}
 

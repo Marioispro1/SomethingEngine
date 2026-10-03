@@ -29,7 +29,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v24
         with:
           workflow: windows.yml
-          name: Codename Engine
+          name: Something Engine
           path: artifacts/windows/full_build
           allow_forks: false
 
@@ -37,7 +37,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v24
         with:
           workflow: windows.yml
-          name: Codename Engine (Executable Only)
+          name: Something Engine (Executable Only)
           path: artifacts/windows/executable
           allow_forks: false
 
@@ -45,7 +45,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v24
         with:
           workflow: macos.yml
-          name: Codename Engine
+          name: Something Engine
           path: artifacts/macos/full_build
           allow_forks: false
 
@@ -53,7 +53,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v24
         with:
           workflow: macos.yml
-          name: Codename Engine (Executable Only)
+          name: Something Engine (Executable Only)
           path: artifacts/macos/executable
           allow_forks: false
 
@@ -61,7 +61,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v24
         with:
           workflow: linux.yml
-          name: Codename Engine
+          name: Something Engine
           path: artifacts/linux/full_build
           allow_forks: false
 
@@ -69,7 +69,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v24
         with:
           workflow: linux.yml
-          name: Codename Engine (Executable Only)
+          name: Something Engine (Executable Only)
           path: artifacts/linux/executable
           allow_forks: false
 
@@ -78,27 +78,27 @@ jobs:
           mkdir -p renamed
 
           # Windows
-          mv artifacts/windows/executable/CodenameEngine.exe renamed/update-windows.exe
+          mv artifacts/windows/executable/SomethingEngine.exe renamed/update-windows.exe
           cd artifacts/windows/full_build
-          zip -r ../../../renamed/"Codename Engine-Windows.zip" *
+          zip -r ../../../renamed/"Something Engine-Windows.zip" *
           cd -
 
           # Mac OS
-          mv artifacts/macos/executable/CodenameEngine renamed/update-mac
+          mv artifacts/macos/executable/SomethingEngine renamed/update-mac
           cd artifacts/macos/full_build
-          if [ -f CodenameEngine.tar.gz ]; then
+          if [ -f SomethingEngine.tar.gz ]; then
             # Keep tar.gz as-is
-            cp CodenameEngine.tar.gz ../../../renamed/"Codename Engine-Mac.tar.gz"
+            cp SomethingEngine.tar.gz ../../../renamed/"Something Engine-Mac.tar.gz"
           else
             # Zip contents at root
-            zip -r ../../../renamed/"Codename Engine-Mac.zip" *
+            zip -r ../../../renamed/"Something Engine-Mac.zip" *
           fi
           cd -
 
           # Linux
-          mv artifacts/linux/executable/CodenameEngine renamed/update-linux
+          mv artifacts/linux/executable/SomethingEngine renamed/update-linux
           cd artifacts/linux/full_build
-          zip -r ../../../renamed/"Codename Engine-Linux.zip" *
+          zip -r ../../../renamed/"Something Engine-Linux.zip" *
           cd -
 
       - name: Find Base Release
@@ -189,10 +189,10 @@ jobs:
           body: ${{ steps.build_body.outputs.body }}
           generate_release_notes: true
           files: |
-            renamed/Codename Engine-Windows.zip
-            renamed/Codename Engine-Mac.zip
-            renamed/Codename Engine-Mac.tar.gz
-            renamed/Codename Engine-Linux.zip
+            renamed/Something Engine-Windows.zip
+            renamed/Something Engine-Mac.zip
+            renamed/Something Engine-Mac.tar.gz
+            renamed/Something Engine-Linux.zip
             renamed/update-assets.zip
             renamed/update-windows.exe
             renamed/update-mac

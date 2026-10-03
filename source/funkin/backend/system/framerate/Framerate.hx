@@ -17,7 +17,7 @@ class Framerate extends Sprite {
 	public static var fpsCounter:FramerateCounter;
 	public static var memoryCounter:MemoryCounter;
 	#if SHOW_BUILD_ON_FPS
-	public static var codenameBuildField:CodenameBuildField;
+	public static var somethingBuildField:SomethingBuildField;
 	#end
 	public static var conductorInfo:ConductorInfo;
 	public static var flixelInfo:FlixelInfo;
@@ -70,7 +70,7 @@ class Framerate extends Sprite {
 		__addToList(fpsCounter = new FramerateCounter());
 		__addToList(memoryCounter = new MemoryCounter());
 		#if SHOW_BUILD_ON_FPS
-		__addToList(codenameBuildField = new CodenameBuildField());
+		__addToList(somethingBuildField = new SomethingBuildField());
 		#end
 		__addCategory(conductorInfo = new ConductorInfo());
 		__addCategory(flixelInfo = new FlixelInfo());
@@ -87,7 +87,7 @@ class Framerate extends Sprite {
 		for(c in categories)
 			c.reload();
 		#if SHOW_BUILD_ON_FPS
-		codenameBuildField.reload();
+		somethingBuildField.reload();
 		#end
 		memoryCounter.reload();
 		fpsCounter.reload();
@@ -119,8 +119,8 @@ class Framerate extends Sprite {
 		x = 10 + offset.x;
 		y = 2 + offset.y;
 
-		var width = MathUtil.maxSmart(fpsCounter.width, memoryCounter.width #if SHOW_BUILD_ON_FPS , codenameBuildField.width #end) + (x*2);
-		var height = #if SHOW_BUILD_ON_FPS codenameBuildField.y + codenameBuildField.height #else memoryCounter.y + memoryCounter.height #end;
+		var width = MathUtil.maxSmart(fpsCounter.width, memoryCounter.width #if SHOW_BUILD_ON_FPS , somethingBuildField.width #end) + (x*2);
+		var height = #if SHOW_BUILD_ON_FPS somethingBuildField.y + somethingBuildField.height #else memoryCounter.y + memoryCounter.height #end;
 		bgSprite.x = -x;
 		bgSprite.y = offset.x;
 		bgSprite.scaleX = width;
@@ -130,7 +130,7 @@ class Framerate extends Sprite {
 		{  // idk i tried to make it more readable:sob:  - Nex
 			memoryCounter.memoryText.selectable = memoryCounter.memoryPeakText.selectable =
 			fpsCounter.fpsNum.selectable = fpsCounter.fpsLabel.selectable =
-			#if SHOW_BUILD_ON_FPS codenameBuildField.selectable = #end selectable;
+			#if SHOW_BUILD_ON_FPS somethingBuildField.selectable = #end selectable;
 		}
 
 		var y:Float = height + 4;

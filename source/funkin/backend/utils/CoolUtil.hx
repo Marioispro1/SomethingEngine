@@ -146,7 +146,7 @@ final class CoolUtil
 		} catch(e) {
 			var errMsg:String = 'Error while trying to save the file: ${Std.string(e).replace('\n', ' ')}';
 			Logs.error(errMsg);
-			if(showErrorBox) funkin.backend.utils.NativeAPI.showMessageBox("Codename Engine Warning", errMsg, MSG_WARNING);
+			if(showErrorBox) funkin.backend.utils.NativeAPI.showMessageBox("Something Engine Warning", errMsg, MSG_WARNING);
 		}
 		#end
 	}

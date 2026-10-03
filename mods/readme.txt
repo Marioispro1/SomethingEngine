@@ -26,5 +26,5 @@ Instead of this one
 ╔═══════════════════════════════════════╗
 ║ COMPATIBILITY                         ║
 ╚═══════════════════════════════════════╝
-ONLY CODENAME ENGINE MODS ARE SUPPORTED!
+ONLY SOMETHING ENGINE MODS ARE SUPPORTED!
 MODS MADE FOR YOSHICRAFTER ENGINE OR PSYCH ENGINE ARE **NOT** SUPPORTED!

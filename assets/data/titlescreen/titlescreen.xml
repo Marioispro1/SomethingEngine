@@ -1,4 +1,4 @@
-<!DOCTYPE codename-titlestate >
+<!DOCTYPE something-titlestate >
 <titlestate>
 	<sprites folder="menus/titlescreen">
 		<sprite name="logo" sprite="logo" x="-150" y="-100" beatInterval="1"/>

@@ -20,7 +20,7 @@ import hx.ws.Types.MessageType;
 class FunkinWebSocket implements IFlxDestroyable {
 	/**
 	* This interacts with the hxWebSockets logging system, probably the best way to get the debug info.
-	* Although, it's not in the format of CodenameEngine's logs so it might look weird.
+	* Although, it's not in the format of SomethingEngine's logs so it might look weird.
 	**/
 	private static var LOG_INFO(default, set):Bool = false;
 	private static function set_LOG_INFO(value:Bool):Bool {

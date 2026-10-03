@@ -6,7 +6,7 @@
 		<str id="song">{0} ({1})</str>
 		<str id="song-paused">Paused - {0} ({1})</str>
 
-		<str id="discordButton">Codename Engine Discord</str>
+		<str id="discordButton">Something Engine Discord</str>
 
 		<str id="menus">In the Menus</str>
 

@@ -291,7 +291,7 @@ class FreeplayState extends MusicBeatState
 	}
 
 	public function convertChart() {
-		trace('Converting ${curSong.name} ${curDifficulties[curDifficulty]} ${curSong.variant} to Codename format...');
+		trace('Converting ${curSong.name} ${curDifficulties[curDifficulty]} ${curSong.variant} to Something format...');
 		var chart = Chart.parse(curSong.name, curDifficulties[curDifficulty], curSong.variant);
 		Chart.save(chart, curDifficulties[curDifficulty], curSong.variant);
 	}

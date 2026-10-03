@@ -1,4 +1,4 @@
-<!DOCTYPE codename-engine-alphabet-font>
+<!DOCTYPE something-engine-alphabet-font>
 <alphabetFont fps="12" advance="50" lineGap="75" forceCasing="lower">
 	<spritesheet>menus/alphabet-bold</spritesheet>
 

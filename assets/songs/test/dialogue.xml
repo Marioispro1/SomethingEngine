@@ -1,4 +1,4 @@
-<!DOCTYPE codename-engine-dialogue>
+<!DOCTYPE something-engine-dialogue>
 <dialogue box="default">
 	<!-- All characters -->
 	<char name="dad" char="dad" position="left" />

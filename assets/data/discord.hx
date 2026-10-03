@@ -11,7 +11,7 @@ function onDiscordPresenceUpdate(e) {
 	if(data.button1Label == null)
 		data.button1Label = TranslationUtil.translate('rpc.discordButton');
 	if(data.button1Url == null)
-		data.button1Url = "https://discord.gg/codename-crew";
+		data.button1Url = "https://discord.gg/something-crew";
 }
 
 function onPlayStateUpdate() {

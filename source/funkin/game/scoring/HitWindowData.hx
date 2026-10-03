@@ -9,8 +9,8 @@ class HitWindowData
 		var map = new StringMap<Float>();
 
 		switch (preset) {
-			// Old Codename, really forgiving inputs (hard to get bad ratings)
-			case CNE_CLASSIC:
+			// Old Something, really forgiving inputs (hard to get bad ratings)
+			case SNE_CLASSIC:
 				map.set("sick", 50.0);
 				map.set("good", 187.5);
 				map.set("bad", 225.0);
@@ -59,7 +59,7 @@ class HitWindowData
 enum abstract WindowPreset(Int) from Int to Int
 {
 	var DEFAULT = 0;
-	var CNE_CLASSIC = 1;
+	var SNE_CLASSIC = 1;
 	var FNF_CLASSIC = 2;
 	var FNF_VSLICE = 3;
 
@@ -67,7 +67,7 @@ enum abstract WindowPreset(Int) from Int to Int
 	{
 		return switch (cast this : WindowPreset)
 		{
-			case CNE_CLASSIC: "Codename (Classic)";
+			case SNE_CLASSIC: "Something (Classic)";
 			case FNF_CLASSIC: "Funkin' (Week 7)";
 			case FNF_VSLICE: "Funkin' (V-Slice)";
 			case _: "Default";

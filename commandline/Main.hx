@@ -33,7 +33,7 @@ class Main {
 				dDoc: [
 					"Usage: help <cmd>",
 					"",
-					"For example, use \"cne help test\" to get additional help on the test command."
+					"For example, use \"sne help test\" to get additional help on the test command."
 				].join("\n")
 			},
 			{
@@ -48,7 +48,7 @@ class Main {
 					"- This build WON'T be ready for release - Running anywhere else than in the bin folder will result in a crash from missing assets",
 					"- This build will also use the mods folder from the source directory.",
 					"",
-					"If you want a full build which contains all assets, run \"cne release\" or \"cne test-release\"",
+					"If you want a full build which contains all assets, run \"sne release\" or \"sne test-release\"",
 					"Additional arguments will be sent to the lime compiler.",
 					"",
 					"-debug : Builds a debug build.",
@@ -67,7 +67,7 @@ class Main {
 					"- This build WON'T be ready for release - Running anywhere else than in the bin folder will result in a crash from missing assets",
 					"- This build will also use the mods folder from the source directory.",
 					"",
-					"If you want a full build which contains all assets, run \"cne release\" or \"cne test-release\"",
+					"If you want a full build which contains all assets, run \"sne release\" or \"sne test-release\"",
 					"Additional arguments will be sent to the lime compiler.",
 					"",
 					"-debug : Builds a debug build.",
@@ -172,7 +172,7 @@ class Main {
 			return;
 		}
 		// shows help
-		Sys.println("Codename Engine Command Line utility");
+		Sys.println("Something Engine Command Line utility");
 		Sys.println('Available commands (${commands.length}):\n');
 		for(line in commands) {
 			if(line.names.contains(null)) line.names.remove(null);

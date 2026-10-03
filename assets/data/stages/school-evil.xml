@@ -1,4 +1,4 @@
-<!DOCTYPE codename-engine-stage>
+<!DOCTYPE something-engine-stage>
 <stage zoom="1" name="school-evil" folder="stages/school/" startCamPosY="550" startCamPosX="600">
 	<use-extension script="pixel"/>
 	<sprite name="bg" x="400" y="200" sprite="animatedEvilSchool"

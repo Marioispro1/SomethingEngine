@@ -161,7 +161,7 @@ class ChartCreationScreen extends UISubstateWindow {
 		}
 
 		var chartData:ChartData = {
-			codenameChart: true,
+			somethingChart: true,
 			strumLines: strumLines,
 			stage: stageTextBox.label.text,
 			scrollSpeed: scrollSpeedTextBox.value,

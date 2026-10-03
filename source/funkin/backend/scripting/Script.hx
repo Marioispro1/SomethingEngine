@@ -105,7 +105,7 @@ class Script extends FlxBasic implements IFlxDestroyable
 				commit: Flags.COMMIT_NUMBER,
 				hash: Flags.COMMIT_HASH,
 				build: 2675, // 2675 being the last build num before it was removed
-				name: "Codename Engine"
+				name: "Something Engine"
 			},
 			"ModState" => funkin.backend.scripting.ModState,
 			"ModSubState" => funkin.backend.scripting.ModSubState,
@@ -205,6 +205,11 @@ class Script extends FlxBasic implements IFlxDestroyable
 	public static function getDefaultPreprocessors():Map<String, Dynamic>
 	{
 		var defines = funkin.backend.system.macros.DefinesMacro.defines;
+		defines.set("SOMETHING_ENGINE", true);
+		defines.set("SOMETHING_VER", Flags.VERSION);
+		defines.set("SOMETHING_BUILD", 2675); // 2675 being the last build num before it was removed
+		defines.set("SOMETHING_COMMIT", Flags.COMMIT_NUMBER);
+		// Old Codename Engine defines, kept for backwards compatibility with existing scripts
 		defines.set("CODENAME_ENGINE", true);
 		defines.set("CODENAME_VER", Flags.VERSION);
 		defines.set("CODENAME_BUILD", 2675); // 2675 being the last build num before it was removed

@@ -1,4 +1,4 @@
-<!DOCTYPE codename-engine-stage>
+<!DOCTYPE something-engine-stage>
 <stage zoom="0.8" name="mall" folder="stages/mall/" startCamPosY="450" startCamPosX="500">
 	<sprite name="bg" x="-1380" y="-620" sprite="bgWalls" scale="0.8" scroll="0.2"/>
 

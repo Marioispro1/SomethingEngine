@@ -1,4 +1,4 @@
-<!DOCTYPE codename-engine-character>
+<!DOCTYPE something-engine-character>
 <character x="70" y="380" sprite="spirit" scale="6" antialiasing="false" camx="100" icon="spirit" color="#FF3C6E">
 	<anim name="idle" anim="idle spirit_" x="0" y="1" fps="24" loop="false"/>
 	<anim name="singLEFT" anim="left_" x="4" y="-1" fps="24" loop="false"/>

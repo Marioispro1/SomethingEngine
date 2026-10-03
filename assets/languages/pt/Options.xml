@@ -45,7 +45,7 @@
 			<str id="changeMode">Mudar Modo</str>
 		</group>
 
-		<str id="category.engine">Codename Engine</str>
+		<str id="category.engine">Something Engine</str>
 		<group name="engine" prefix="engine.">
 			<str id="switchMod">Trocar Mod</str>
 			<str id="fpsCounter">Contador de FPS</str>

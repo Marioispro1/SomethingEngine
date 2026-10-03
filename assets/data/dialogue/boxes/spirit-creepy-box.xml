@@ -1,4 +1,4 @@
-<!DOCTYPE codename-engine-dialogue-box>
+<!DOCTYPE something-engine-dialogue-box>
 <dialoguebox sprite="pixel/dialogueBox-evil" antialiasing="false" graphicSizex="1344" y="107" textSound="pixel/pixelText" nextSound="pixel/clickText" updateHitbox="true">
 	<!--
 		Node containing all text settings

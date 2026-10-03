@@ -1,4 +1,4 @@
-<!DOCTYPE codename-engine-character>
+<!DOCTYPE something-engine-character>
 <character isPlayer="true" flipX="true" x="0" y="350" icon="bf" camx="25" color="#31B0D1">
 	<anim name="idle"           anim="BF idle dance"      fps="24" loop="false" x="-5"  y="0"/>
 	<anim name="singUP"         anim="BF NOTE UP0"        fps="24" loop="false" x="-29" y="27"/>

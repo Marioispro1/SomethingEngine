@@ -468,7 +468,7 @@
 
 			<group name="Warnings" prefix="warnings.">
 				<str id="notImplemented-title">Novo Tipo de Letra: Função Não Implementada!</str>
-				<str id="notImplemented-body">Esta função ainda não foi implementada. Por favor espere por mais atualizações até ser implementada.\n\n\n- Codename Crew (Equipa Codename)</str>
+				<str id="notImplemented-body">Esta função ainda não foi implementada. Por favor espere por mais atualizações até ser implementada.\n\n\n- Something Crew (Equipa Something)</str>
 			</group>
 		</group>
 

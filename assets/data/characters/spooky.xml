@@ -1,4 +1,4 @@
-<!DOCTYPE codename-engine-character>
+<!DOCTYPE something-engine-character>
 <character y="200" sprite="spooky" icon="spooky" color="#C5995A">
 	<anim name="danceLeft" anim="spooky dance idle" x="0" y="0" fps="24" loop="false" indices="0..6"/>
 	<anim name="danceRight" anim="spooky dance idle" x="0" y="0" fps="24" loop="false" indices="8..14"/>

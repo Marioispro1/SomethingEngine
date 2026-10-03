@@ -9,13 +9,13 @@ import funkin.options.type.GithubIconOption;
 
 using StringTools;
 
-class CreditsCodename extends funkin.options.TreeMenuScreen {
+class CreditsSomething extends funkin.options.TreeMenuScreen {
 	public var error:Bool = false;
 	public var totalContributions:Int = 0;
 	public var contribFormats:Array<FlxTextFormatMarkerPair> = [];
 
 	public function new() {
-		super("Codename Engine", "credits.allContributors");
+		super("Something Engine", "credits.allContributors");
 		tryUpdating(true);
 	}
 
@@ -77,7 +77,7 @@ class CreditsCodename extends funkin.options.TreeMenuScreen {
 			error = true;
 			var errMsg:String = 'Error while trying to download contributors list:\n${CoolUtil.removeIP(e.message)}';
 			Logs.error(errMsg.replace('\n', ' '));
-			funkin.backend.utils.NativeAPI.showMessageBox("Codename Engine Warning", errMsg, MSG_WARNING);
+			funkin.backend.utils.NativeAPI.showMessageBox("Something Engine Warning", errMsg, MSG_WARNING);
 		});
 		if(error) return false;
 		if((idk is Array)) {
@@ -91,18 +91,18 @@ class CreditsCodename extends funkin.options.TreeMenuScreen {
 			});
 			Options.contributors = contributors;
 		}
-		Logs.verbose('[CreditsCodename] Contributors list Updated!');
+		Logs.verbose('[CreditsSomething] Contributors list Updated!');
 
 		var errorOnMain:Bool = false;
 		var idk2 = GitHub.getOrganizationMembers(Flags.REPO_OWNER, function(e) {
 			errorOnMain = true;
 			var errMsg:String = 'Error while trying to download ${Flags.REPO_OWNER} members list:\n${CoolUtil.removeIP(e.message)}';
 			Logs.error(errMsg.replace('\n', ' '));
-			funkin.backend.utils.NativeAPI.showMessageBox("Codename Engine Warning", errMsg, MSG_WARNING);
+			funkin.backend.utils.NativeAPI.showMessageBox("Something Engine Warning", errMsg, MSG_WARNING);
 		});
 		if(!errorOnMain) {
 			Options.mainDevs = [for(m in idk2) m.id];
-			Logs.verbose('[CreditsCodename] Main Devs list Updated!');
+			Logs.verbose('[CreditsSomething] Main Devs list Updated!');
 		}
 
 		return true;

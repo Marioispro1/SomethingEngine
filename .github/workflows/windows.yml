@@ -44,14 +44,14 @@ jobs:
       - name: Uploading artifact (executable)
         uses: actions/upload-artifact@v7
         with:
-          name: Codename Engine (Executable Only)
+          name: Something Engine (Executable Only)
           path: |
-            export/release/windows/bin/CodenameEngine.exe
+            export/release/windows/bin/SomethingEngine.exe
             export/release/windows/bin/lime.ndll
       - name: Uploading artifact (entire build)
         uses: actions/upload-artifact@v7
         with:
-          name: Codename Engine
+          name: Something Engine
           path: export/release/windows/bin
       # - name: Clearing already existing cache
       #   uses: actions/github-script@v9
@@ -117,7 +117,7 @@ jobs:
       - name: Uploading artifact (entire build)
         uses: actions/upload-artifact@v7
         with:
-          name: Codename Engine Debug
+          name: Something Engine Debug
           path: export/debug/windows/bin
       # - name: Clearing already existing cache
       #   uses: actions/github-script@v9

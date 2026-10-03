@@ -55,7 +55,7 @@ class StrumLine extends FlxTypedGroup<Strum> {
 	 */
 	public var controls:Controls = null;
 	/**
-	 * Chart JSON data assigned to this StrumLine (Codename format)
+	 * Chart JSON data assigned to this StrumLine (Something format)
 	 */
 	public var data:ChartStrumLine = null;
 	/**

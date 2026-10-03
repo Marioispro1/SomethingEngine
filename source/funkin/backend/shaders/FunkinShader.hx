@@ -68,7 +68,7 @@ class FunkinShader extends FlxRuntimeShader implements IHScriptCustomBehaviour {
 		// aka instead of ShaderInput<Float> it gets built as ShaderInput_Float
 		// this should be fine tho because we check the class, and the fields don't vary based on the type
 
-		// thanks for looking in the code cne fans :D!! -lunar
+		// thanks for looking in the code sne fans :D!! -lunar
 
 		if (cl.startsWith("openfl.display.ShaderParameter"))
 			return (field.__length > 1) ? field.value : field.value[0];

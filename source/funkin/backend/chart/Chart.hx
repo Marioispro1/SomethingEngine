@@ -13,14 +13,14 @@ import sys.FileSystem;
 using StringTools;
 
 enum abstract ChartFormat(Int) {
-	var CODENAME = 0;
+	var SOMETHING = 0;
 	var LEGACY = 1;  // also used by many other engines (old Psych, Kade and more)  - Nex
 	var VSLICE = 2;
 	var PSYCH_NEW = 3;
 
 	@:to public function toString():String {
 		return switch(cast (this, ChartFormat)) {
-			case CODENAME: "CODENAME";
+			case SOMETHING: "SOMETHING";
 			case LEGACY: "LEGACY";
 			case VSLICE: "VSLICE";
 			case PSYCH_NEW: "PSYCH_NEW";
@@ -37,7 +37,7 @@ enum abstract ChartFormat(Int) {
 			return PSYCH_NEW;
 
 		return switch(str) {
-			case "codename" | "codenameengine": CODENAME;
+			case "something" | "somethingengine": SOMETHING;
 			case "newpsych" | "psychnew": PSYCH_NEW;
 			default: def;
 		}
@@ -59,8 +59,8 @@ class Chart {
 	public static function detectChartFormat(data:Dynamic):ChartFormat {
 		var __temp:Dynamic;  // imma reuse this var so the program doesn't have to get values multiple times  - Nex
 
-		if ((__temp = data.codenameChart) == true || __temp == "true")
-			return CODENAME;
+		if ((__temp = data.somethingChart) == true || __temp == "true")
+			return SOMETHING;
 
 		if (Reflect.hasField(data, "version") && Reflect.hasField(data, "scrollSpeed"))
 			return VSLICE;
@@ -178,7 +178,7 @@ class Chart {
 			},
 			scrollSpeed: Flags.DEFAULT_SCROLL_SPEED,
 			stage: Flags.DEFAULT_STAGE,
-			codenameChart: true,
+			somethingChart: true,
 			fromMods: Paths.assetsTree.existsSpecific(chartPath, "TEXT", MODS)
 		};
 
@@ -196,7 +196,7 @@ class Chart {
 		 */
 		#if REGION
 		if (data != null) switch (detectChartFormat(data)) {
-			case CODENAME:
+			case SOMETHING:
 				// backward compat on events since it caused problems
 				var eventTypesToString:Map<Int, String> = [
 					-1 => "HScript Call",

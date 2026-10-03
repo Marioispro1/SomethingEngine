@@ -66,7 +66,7 @@ class GlyphInfoWindow extends UIWindow {
 		addLabelOn(prefixBox, "Animation Prefix");
 
 		xBox = new UINumericStepper(prefixBox.x, prefixBox.y + prefixBox.bHeight + itemMargin + labelOffset, 0, 1, 2, null, null, 80);
-		xBox.onChange = valueSet.bind(xBox, function(val) { // kinda dumb but blame cne ui
+		xBox.onChange = valueSet.bind(xBox, function(val) { // kinda dumb but blame sne ui
 			compon.x = -val;
 			data.advanceStyle = advanceStyle;
 		});
@@ -75,14 +75,14 @@ class GlyphInfoWindow extends UIWindow {
 		members.push(new UIText(xBox.x + xBox.bWidth - 2, xBox.y + 9, 0, ",", 22));
 
 		yBox = new UINumericStepper(xBox.x + xBox.bWidth + itemMargin, xBox.y, 0, 1, 2, null, null, 80);
-		yBox.onChange = valueSet.bind(yBox, function(val) { // kinda dumb but blame cne ui
+		yBox.onChange = valueSet.bind(yBox, function(val) { // kinda dumb but blame sne ui
 			compon.y = val;
 		});
 		members.push(yBox);
 		addLabelOn(xBox, "Offset (x,y)");
 
 		scaleXBox = new UINumericStepper(yBox.x + yBox.bWidth + itemMargin * 2, yBox.y, 1, 0.1, 2, null, null, 80);
-		scaleXBox.onChange = valueSet.bind(scaleXBox, function(val) { // kinda dumb but blame cne ui
+		scaleXBox.onChange = valueSet.bind(scaleXBox, function(val) { // kinda dumb but blame sne ui
 			compon.scaleX = val;
 			if (outlineCheck.checked)
 				data.components[compon.outIndex].scaleX = val;
@@ -93,7 +93,7 @@ class GlyphInfoWindow extends UIWindow {
 		members.push(new UIText(scaleXBox.x + scaleXBox.bWidth - 2, scaleXBox.y + 9, 0, ",", 22));
 
 		scaleYBox = new UINumericStepper(scaleXBox.x + scaleXBox.bWidth + itemMargin, scaleXBox.y, 1, 0.1, 2, null, null, 80);
-		scaleYBox.onChange = valueSet.bind(scaleYBox, function(val) { // kinda dumb but blame cne ui
+		scaleYBox.onChange = valueSet.bind(scaleYBox, function(val) { // kinda dumb but blame sne ui
 			compon.scaleY = val;
 			if (outlineCheck.checked)
 				data.components[compon.outIndex].scaleY = val;
@@ -102,7 +102,7 @@ class GlyphInfoWindow extends UIWindow {
 		addLabelOn(scaleXBox, "Scale (x,y)");
 
 		angleBox = new UINumericStepper(scaleYBox.x + scaleYBox.bWidth + itemMargin * 2, scaleYBox.y, 0, 1, 2, null, null, 80);
-		angleBox.onChange = valueSet.bind(angleBox, function(val) { // kinda dumb but blame cne ui
+		angleBox.onChange = valueSet.bind(angleBox, function(val) { // kinda dumb but blame sne ui
 			compon.shouldRotate = val != 0;
 			compon.angle = val;
 			compon.cos = Math.cos(val * FlxAngle.TO_RAD);
@@ -218,7 +218,7 @@ class GlyphInfoWindow extends UIWindow {
 		outlineBoxTitle = addLabelOn(outlineBox, "Prefix");
 
 		outlineXBox = new UINumericStepper(outlineBox.x + outlineBox.bWidth + itemMargin * 2, outlineBox.y, 0, 1, 2, null, null, 80);
-		outlineXBox.onChange = valueSet.bind(outlineXBox, function(val) { // kinda dumb but blame cne ui
+		outlineXBox.onChange = valueSet.bind(outlineXBox, function(val) { // kinda dumb but blame sne ui
 			if (outlineCheck.checked)
 				data.components[compon.outIndex].x = val;
 			data.advanceStyle = advanceStyle;
@@ -228,7 +228,7 @@ class GlyphInfoWindow extends UIWindow {
 		members.push(new UIText(outlineXBox.x + outlineXBox.bWidth - 2, outlineXBox.y + 9, 0, ",", 22));
 
 		outlineYBox = new UINumericStepper(outlineXBox.x + outlineXBox.bWidth + itemMargin, outlineXBox.y, 0, 1, 2, null, null, 80);
-		outlineYBox.onChange = valueSet.bind(outlineYBox, function(val) { // kinda dumb but blame cne ui
+		outlineYBox.onChange = valueSet.bind(outlineYBox, function(val) { // kinda dumb but blame sne ui
 			if (outlineCheck.checked)
 				data.components[compon.outIndex].y = val;
 		});
