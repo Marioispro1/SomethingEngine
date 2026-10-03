@@ -4,6 +4,7 @@ package funkin.backend.system.console.inspector;
 
 import openfl.Lib;
 import flixel.FlxState;
+import flixel.math.FlxPoint;
 import flixel.group.FlxSpriteGroup;
 import flixel.group.FlxGroup;
 import flixel.text.FlxText;
@@ -121,6 +122,16 @@ class ConsoleInspector {
 	public var clickSelect:Bool = true;
 	var clickSelectPtr = new ImGuiBoolPtr(true);
 
+	/** Draws keyframe markers + motion paths over the game view. */
+	public var showKeyOverlay:Bool = true;
+	var showKeyOverlayPtr = new ImGuiBoolPtr(true);
+
+	/** Keyframe marker being dragged in the scene, if any. */
+	var keyDrag:{obj:FlxBasic, index:Int, cam:FlxCamera} = null;
+
+	/** Set when the mouse interacted with a keyframe marker this frame (blocks scene click-select). */
+	var keyMouseConsumed:Bool = false;
+
 	/** Force window pos/size for one frame (clears stale docking positions). */
 	public var forceLayout:Bool = false;
 
@@ -135,6 +146,7 @@ class ConsoleInspector {
 
 	var addKind = new ImGuiIntPtr(0);
 	var addImagePath = new ImGuiStringPtr("");
+	var treeFilter = new ImGuiStringPtr("");
 	var addTextContent = new ImGuiStringPtr("New Text");
 	var addTextSize = new ImGuiIntPtr(24);
 	var addCustomCode = new ImGuiStringPtr("new flixel.FlxSprite(0, 0, Paths.image('menus/menuBG'))");
@@ -260,8 +272,12 @@ class ConsoleInspector {
 				if (ImGui.menuItem("Undo", "Ctrl+Z")) doUndo();
 				if (ImGui.menuItem("Redo", "Ctrl+Y")) doRedo();
 				ImGui.separator();
+				if (ImGui.menuItem("Duplicate", "Ctrl+D", false, selectedObject != null)) duplicateObject(cast selectedObject);
+				if (ImGui.menuItem("Delete", "Del", false, selectedObject != null)) deleteInspectorObject(cast selectedObject);
+				ImGui.separator();
 				if (ImGui.menuItem("Reload State Scripts")) reloadStateScripts();
-				if (ImGui.menuItem("Save Patch", "writes data/states/<State>.hx")) savePatch();
+				if (ImGui.menuItem("Save Patch", "Ctrl+S")) savePatch();
+				if (ImGui.isItemHovered()) ImGui.setTooltip("writes data/states/<State>.hx");
 				ImGui.endMenu();
 			}
 			if (ImGui.beginMenu("Add")) {
@@ -285,6 +301,7 @@ class ConsoleInspector {
 				ImGui.menuItem("Q/W/E/R - none/move/rotate/scale gizmo", null, false, false);
 				ImGui.menuItem("Ctrl while dragging - snap", null, false, false);
 				ImGui.menuItem("Click in scene - select object", null, false, false);
+				ImGui.menuItem("Drag keyframe marker - move key", null, false, false);
 				ImGui.menuItem("F3 - console, F4 - this window", null, false, false);
 				ImGui.endMenu();
 			}
@@ -447,9 +464,14 @@ class ConsoleInspector {
 					if (ImGui.selectable("Scale (R)", gizmo.gizmoMode == 2)) gizmo.gizmoMode = 2;
 					ImGui.checkbox("Click scene to select##pick", clickSelectPtr);
 					clickSelect = clickSelectPtr.value;
+					ImGui.checkbox("Show keyframes##pick", showKeyOverlayPtr);
+					showKeyOverlay = showKeyOverlayPtr.value;
 					ImGui.unindent();
 					ImGui.separatorText("Scene Tree");
+					ImGui.setNextItemWidth(-1);
+					ImGui.inputTextWithHint("##treeFilter", "Filter objects...", treeFilter);
 					for (index => member in currentStateObjects) {
+						if (treeFilterActive() && !treeMatch(member)) continue;
 						var nodeID = member.name + index;
 						var flags = ImGuiTreeNodeFlags.DefaultOpen;
 						if (member.obj == selectedObject) flags |= ImGuiTreeNodeFlags.Selected;
@@ -514,6 +536,7 @@ class ConsoleInspector {
 			}
 		}
 
+		drawKeyframeOverlays();
 		tickUndo(FlxG.elapsed);
 		tickKeyTracks(FlxG.elapsed);
 		runObjectHooks();
@@ -533,11 +556,22 @@ class ConsoleInspector {
 		}
 	}
 
+	inline function treeFilterActive() return StringTools.trim(treeFilter.value) != "";
+
+	function treeMatch(m:InspectorObject):Bool {
+		var f = StringTools.trim(treeFilter.value).toLowerCase();
+		if (m.name != null && m.name.toLowerCase().indexOf(f) >= 0) return true;
+		if (m.type != null && m.type.toLowerCase().indexOf(f) >= 0) return true;
+		for (c in m.members) if (treeMatch(c)) return true;
+		return false;
+	}
+
 	function generateTreeForMembers(id:String, object:InspectorObject) {
 		for (index => member in object.members) {
+			if (treeFilterActive() && !treeMatch(member)) continue;
 			var valid = member.obj != null;
 			var nodeID = id + object.name + index;
-			var flags = ImGuiTreeNodeFlags.None;
+			var flags = treeFilterActive() ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
 			if (member.members.length == 0) flags |= ImGuiTreeNodeFlags.Leaf;
 			if (valid && member.obj == selectedObject) flags |= ImGuiTreeNodeFlags.Selected;
 			if (ImGui.treeNodeEx(nodeID, flags, member.name + (valid ? " (" + member.type + ")" : ""))) {
@@ -958,7 +992,24 @@ class ConsoleInspector {
 		tr.keys.push(k);
 		sortTrack(tr);
 		tr.sel = tr.keys.indexOf(k);
+		syncPatchTrack(tr);
 		markEdited(obj);
+	}
+
+	/**
+	 * For tracks adopted from a saved patch: copies edited keys/mode into the
+	 * patch script's live track so the running animation reflects edits
+	 * immediately (eases are resolved to FlxEase functions).
+	 */
+	public function syncPatchTrack(tr:InspectorTrack) {
+		var pt = tr.patchTrack;
+		if (pt == null) return;
+		var arr:Array<Dynamic> = [];
+		for (k in tr.keys)
+			arr.push({t: k.t, x: k.x, y: k.y, angle: k.angle, sx: k.scaleX, sy: k.scaleY, alpha: k.alpha,
+				ease: Reflect.field(flixel.tweens.FlxEase, k.ease)});
+		pt.keys = arr;
+		pt.mode = tr.mode;
 	}
 
 	public function sortTrack(tr:InspectorTrack) {
@@ -969,7 +1020,7 @@ class ConsoleInspector {
 		clickCaptureFor = clickCaptureFor == obj ? null : obj;
 	}
 
-	function trackDuration(tr:InspectorTrack):Float {
+	public function trackDuration(tr:InspectorTrack):Float {
 		return tr.keys.length == 0 ? 0 : tr.keys[tr.keys.length - 1].t;
 	}
 
@@ -1017,22 +1068,35 @@ class ConsoleInspector {
 
 	/** Evaluates the track at its current time and applies it to the object. */
 	public function applyTrack(obj:FlxBasic, tr:InspectorTrack) {
-		var keys = tr.keys;
-		if (keys.length == 0 || !(obj is FlxObject)) return;
+		if (tr.keys.length == 0 || !(obj is FlxObject)) return;
 		var o:FlxObject = cast obj;
+		var p = evalTrackPose(tr, tr.t);
+		o.x = p.x;
+		o.y = p.y;
+		o.angle = p.angle;
+		if (obj is FlxSprite) {
+			var s:FlxSprite = cast obj;
+			s.scale.set(p.scaleX, p.scaleY);
+			s.alpha = p.alpha;
+		}
+	}
+
+	/** Samples the track's eased pose at time `t`. Public so the editor can preview paths. */
+	public function evalTrackPose(tr:InspectorTrack, t:Float):{x:Float, y:Float, angle:Float, scaleX:Float, scaleY:Float, alpha:Float} {
+		var keys = tr.keys;
 		var a = keys[0];
 		var b = keys[0];
 		var u = 1.0;
-		if (tr.t > keys[0].t) {
-			if (tr.t >= keys[keys.length - 1].t) {
+		if (t > keys[0].t) {
+			if (t >= keys[keys.length - 1].t) {
 				a = b = keys[keys.length - 1];
 			} else {
 				for (i in 0...keys.length - 1) {
-					if (tr.t >= keys[i].t && tr.t <= keys[i + 1].t) {
+					if (t >= keys[i].t && t <= keys[i + 1].t) {
 						a = keys[i];
 						b = keys[i + 1];
 						var span = b.t - a.t;
-						u = span <= 0 ? 1.0 : (tr.t - a.t) / span;
+						u = span <= 0 ? 1.0 : (t - a.t) / span;
 						if (a.ease != null) {
 							var ef = Reflect.field(flixel.tweens.FlxEase, a.ease);
 							if (ef != null) u = ef(u);
@@ -1042,14 +1106,14 @@ class ConsoleInspector {
 				}
 			}
 		}
-		o.x = a.x + (b.x - a.x) * u;
-		o.y = a.y + (b.y - a.y) * u;
-		o.angle = a.angle + (b.angle - a.angle) * u;
-		if (obj is FlxSprite) {
-			var s:FlxSprite = cast obj;
-			s.scale.set(a.scaleX + (b.scaleX - a.scaleX) * u, a.scaleY + (b.scaleY - a.scaleY) * u);
-			s.alpha = a.alpha + (b.alpha - a.alpha) * u;
-		}
+		return {
+			x: a.x + (b.x - a.x) * u,
+			y: a.y + (b.y - a.y) * u,
+			angle: a.angle + (b.angle - a.angle) * u,
+			scaleX: a.scaleX + (b.scaleX - a.scaleX) * u,
+			scaleY: a.scaleY + (b.scaleY - a.scaleY) * u,
+			alpha: a.alpha + (b.alpha - a.alpha) * u
+		};
 	}
 
 	/** Picks the topmost visible object under the mouse, searching substates first. */
@@ -1206,14 +1270,20 @@ class ConsoleInspector {
 				snapTimer = 0;
 			}
 		}
-		if (FlxG.keys.pressed.CONTROL && !ImGuiIO.wantCaptureKeyboard) {
-			if (FlxG.keys.justPressed.Z) doUndo();
-			else if (FlxG.keys.justPressed.Y) doRedo();
+		if (!ImGuiIO.wantCaptureKeyboard) {
+			if (FlxG.keys.pressed.CONTROL) {
+				if (FlxG.keys.justPressed.Z) doUndo();
+				else if (FlxG.keys.justPressed.Y) doRedo();
+				else if (FlxG.keys.justPressed.D && selectedObject != null) { duplicateObject(cast selectedObject); runStatus = "Duplicated"; }
+				else if (FlxG.keys.justPressed.S) savePatch();
+			}
+			else if (FlxG.keys.justPressed.DELETE && selectedObject != null) deleteInspectorObject(cast selectedObject);
 		}
 	}
 
 	function tickKeyTracks(elapsed:Float) {
-		if (clickSelect && clickCaptureFor == null && FlxG.mouse.justPressed && !ImGuiIO.wantCaptureMouse
+		if (clickSelect && clickCaptureFor == null && !keyMouseConsumed && keyDrag == null
+			&& FlxG.mouse.justPressed && !ImGuiIO.wantCaptureMouse
 			&& !gizmo.positionActive && !gizmo.rotationActive && !gizmo.scaleActive) {
 			var pick = pickSceneObject();
 			if (pick != null) selectObject(pick);
@@ -1246,6 +1316,138 @@ class ConsoleInspector {
 		}
 		if (dead != null)
 			for (o in dead) keyTracks.remove(o);
+	}
+
+	inline function scrollFactorFor(obj:FlxBasic):FlxPoint
+		return obj is FlxObject ? (cast obj : FlxObject).scrollFactor : null;
+
+	/** Evaluates the track's position at its current time without applying it. */
+	public function evalTrackPos(tr:InspectorTrack):FlxPoint {
+		if (tr.keys.length == 0) return null;
+		var p = evalTrackPose(tr, tr.t);
+		return FlxPoint.get(p.x, p.y);
+	}
+
+	/**
+	 * Draws keyframe markers + motion paths over the game view, and handles
+	 * clicking/dragging markers. Called every frame while the editor is open.
+	 */
+	function drawKeyframeOverlays() {
+		keyMouseConsumed = false;
+		var drawList = ImGui.getBackgroundDrawList(ImGui.getMainViewport());
+
+		// continue an in-progress key drag
+		if (keyDrag != null) {
+			var tr = keyTracks.get(keyDrag.obj);
+			if (tr == null || keyDrag.index >= tr.keys.length || !isAliveInScene(keyDrag.obj) || !FlxG.mouse.pressed) {
+				if (tr != null && keyDrag.index < tr.keys.length) {
+					syncPatchTrack(tr);
+					markEdited(keyDrag.obj);
+				}
+				keyDrag = null;
+			} else {
+				var k = tr.keys[keyDrag.index];
+				var wp = FlxG.mouse.getWorldPosition(keyDrag.cam);
+				var sf = scrollFactorFor(keyDrag.obj);
+				if (sf != null) {
+					k.x = wp.x + keyDrag.cam.viewMarginLeft * (sf.x - 1);
+					k.y = wp.y + keyDrag.cam.viewMarginTop * (sf.y - 1);
+				} else {
+					k.x = wp.x;
+					k.y = wp.y;
+				}
+				keyMouseConsumed = true;
+			}
+		}
+
+		if (!showKeyOverlay) return;
+
+		var mouse = ImGui.getMousePos();
+		var hoverObj:FlxBasic = null;
+		var hoverIdx:Int = -1;
+		var hoverDist:Float = 121; // max pick radius (11px), squared
+
+		for (obj => tr in keyTracks) {
+			if (tr.keys.length == 0 || !isAliveInScene(obj)) continue;
+			var data = findInspectorObjectFor(obj);
+			var cam = data != null ? gizmo.prepareObjectCamera(data, obj) : FlxG.camera;
+			var sel = obj == selectedObject;
+			var lineCol:Int = sel ? 0xCCE6C55A : 0x4DE6C55A;
+			var markCol:Int = sel ? 0xFFE6C55A : 0x99E6C55A;
+			var sf = scrollFactorFor(obj);
+
+			// motion path through the keys (ease applied per segment)
+			if (tr.keys.length > 1) {
+				var prev = gizmo.toScreenPoint(FlxPoint.get(tr.keys[0].x, tr.keys[0].y), cam, sf);
+				for (i in 1...tr.keys.length) {
+					var a = tr.keys[i - 1];
+					var b = tr.keys[i];
+					var ef:Dynamic = a.ease != null ? Reflect.field(flixel.tweens.FlxEase, a.ease) : null;
+					for (s in 1...13) {
+						var u = s / 12;
+						if (ef != null) u = ef(u);
+						var p = gizmo.toScreenPoint(FlxPoint.get(a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u), cam, sf);
+						drawList.addLine([prev.x, prev.y, p.x, p.y], lineCol, sel ? 2.0 : 1.0);
+						prev.put();
+						prev = p;
+					}
+				}
+				prev.put();
+			}
+
+			// keyframe markers
+			for (i => k in tr.keys) {
+				var p = gizmo.toScreenPoint(FlxPoint.get(k.x, k.y), cam, sf);
+				var isSelKey = sel && tr.sel == i;
+				var r = isSelKey ? 7 : 5;
+				var dx = mouse.x - p.x;
+				var dy = mouse.y - p.y;
+				var d2 = dx * dx + dy * dy;
+				if (!ImGuiIO.wantCaptureMouse && d2 < hoverDist) {
+					hoverDist = d2;
+					hoverObj = obj;
+					hoverIdx = i;
+				}
+				drawList.addCircleFilled(p.x, p.y, r, isSelKey ? 0xFF5EC9FF : markCol, 10);
+				drawList.addCircle(p.x, p.y, r + 1, 0xB3000000, 10, 1);
+				drawList.addText(p.x + 8, p.y - 6, markCol, 'K$i@${FlxMath.roundDecimal(k.t, 2)}s');
+				p.put();
+			}
+
+			// playhead ghost
+			if (sel) {
+				var pos = evalTrackPos(tr);
+				if (pos != null) {
+					var p = gizmo.toScreenPoint(pos, cam, sf);
+					drawList.addCircle(p.x, p.y, 9, 0xFFFFFFFF, 12, 1.5);
+					drawList.addText(p.x + 11, p.y - 6, 0xFFFFFFFF, 't=${FlxMath.roundDecimal(tr.t, 2)}s');
+					p.put();
+				}
+			}
+		}
+
+		// armed click-capture ghost at the mouse position
+		if (clickCaptureFor != null) {
+			drawList.addCircle(mouse.x, mouse.y, 8, 0xFF7CFC00, 12, 2);
+			drawList.addLine([mouse.x - 12, mouse.y, mouse.x + 12, mouse.y], 0xFF7CFC00, 1);
+			drawList.addLine([mouse.x, mouse.y - 12, mouse.x, mouse.y + 12], 0xFF7CFC00, 1);
+		}
+
+		// grab a marker (runs before scene click-select in tickKeyTracks)
+		if (hoverObj != null) {
+			keyMouseConsumed = true;
+			if (FlxG.mouse.justPressed) {
+				var tr = keyTracks.get(hoverObj);
+				tr.sel = hoverIdx;
+				selectObject(hoverObj);
+				var data = findInspectorObjectFor(hoverObj);
+				keyDrag = {
+					obj: hoverObj,
+					index: hoverIdx,
+					cam: data != null ? gizmo.prepareObjectCamera(data, hoverObj) : FlxG.camera
+				};
+			}
+		}
 	}
 
 	public function deleteInspectorObject(obj:FlxBasic) {

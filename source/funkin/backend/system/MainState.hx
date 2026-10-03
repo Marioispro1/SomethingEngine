@@ -163,6 +163,9 @@ class MainState extends FlxState {
 			if (cast(lib, ZipFolderLibrary).PRELOAD_VIDEOS) cast(lib, ZipFolderLibrary).precacheVideos();
 		}
 
+		if (Flags.PRELOAD_SHADERS)
+			funkin.backend.shaders.ShaderPreload.preloadAll();
+
 		if (!initiated) {
 			if (Main.goToSong != null) {
 				if (Main.goToCharter) FlxG.switchState(new funkin.editors.charter.Charter(Main.goToSong, Main.goToDifficulty, Main.goToVariation));

@@ -101,6 +101,13 @@ class BuiltInCommands {
 	});
 	static var switchMod = new FuncCommand("switchMod", "[name]", "(Switches to another mod, inputting nothing will disable mod)", function(args) { funkin.backend.assets.ModsFolder.switchMod(args[0]); });
 	static var reloadMod = new FuncCommand("reloadMod", "", "(Reload current mod)", function(args) { funkin.backend.assets.ModsFolder.reloadMods(); });
+	static var preloadShaders = new FuncCommand("preloadShaders", "[name]", "(Pre-compiles one shader, or every shader in shaders/ with no args, to avoid first-use hitching)", function(args) {
+		if (args.length == 0 || args[0] == null) {
+			funkin.backend.shaders.ShaderPreload.preloadAll();
+		} else if (funkin.backend.shaders.ShaderPreload.preload(args[0]) == null) {
+			Logs.error('Shader ${args[0]} was not found.');
+		}
+	});
 
 	static var reloadState = new FuncCommand("reloadState", "", "(Reload current state)", function(args) { FlxG.resetState(); });
 	static var goToPlayState = new FuncCommand("goToPlayState", "", "(switches state to PlayState, only works if a song is already loaded)", function(args) { if (PlayState.SONG != null) FlxG.switchState(new PlayState()); });

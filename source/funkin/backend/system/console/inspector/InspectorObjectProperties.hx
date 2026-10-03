@@ -4,6 +4,7 @@ import openfl.Lib;
 import flixel.text.FlxText;
 import flixel.util.FlxColor;
 import funkin.backend.system.console.inspector.ConsoleInspector.InspectorObject;
+import funkin.backend.system.console.inspector.ConsoleInspector.InspectorKeyframe;
 
 #if IMGUI_ENABLED
 import lime.tools.imgui.ImGuiFlags;
@@ -329,15 +330,33 @@ class InspectorObjectProperties {
 		ImGui.setNextItemWidth(95);
 		var modeIdx = intPool.get();
 		modeIdx.value = tr.mode;
-		if (ImGui.combo("##kfMode", modeIdx, ["Once", "Loop", "PingPong", "Reverse", "Beats"])) { tr.mode = modeIdx.value; inspector.markEdited(basic); }
+		if (ImGui.combo("##kfMode", modeIdx, ["Once", "Loop", "PingPong", "Reverse", "Beats"])) { tr.mode = modeIdx.value; inspector.syncPatchTrack(tr); inspector.markEdited(basic); }
 		ImGui.sameLine();
 		ImGui.text('t=' + FlxMath.roundDecimal(tr.t, 2) + "s");
+
+		// playhead scrub slider
+		if (tr.keys.length > 0) {
+			var scrub = floatPool.get();
+			scrub.value = tr.t;
+			ImGui.setNextItemWidth(-1);
+			if (ImGui.sliderFloat("##kfScrub", scrub, 0, Math.max(inspector.trackDuration(tr), 0.001), "t=%.2fs")) {
+				tr.t = scrub.value;
+				if (tr.patchTrack != null) tr.patchTrack.t = tr.t;
+				if (!tr.playing) inspector.applyTrack(basic, tr);
+			}
+		}
 
 		// key capture row
 		ImGui.setNextItemWidth(70);
 		ImGui.dragFloat("time##kfAddTime", keyTimePtr, 0.01, 0, 0, "%.2f");
 		ImGui.sameLine();
-		if (ImGui.button("Add Key##kf")) inspector.addKeyframe(basic, keyTimePtr.value);
+		if (ImGui.smallButton("@t##kfSetNow")) keyTimePtr.value = FlxMath.roundDecimal(tr.t, 2);
+		if (ImGui.isItemHovered()) ImGui.setTooltip("set the time field to the current playhead");
+		ImGui.sameLine();
+		if (ImGui.button("Add Key##kf")) {
+			inspector.addKeyframe(basic, keyTimePtr.value);
+			keyTimePtr.value = FlxMath.roundDecimal(inspector.trackDuration(tr) + 0.5, 2);
+		}
 		if (ImGui.isItemHovered()) ImGui.setTooltip("snapshot the object's transform at this time");
 		ImGui.sameLine();
 		var armed = inspector.clickCaptureFor == basic;
@@ -347,8 +366,38 @@ class InspectorObjectProperties {
 		if (tr.sel >= 0 && tr.sel < tr.keys.length && ImGui.button("Del Key##kf")) {
 			tr.keys.splice(tr.sel, 1);
 			tr.sel = -1;
+			inspector.syncPatchTrack(tr);
 			inspector.markEdited(basic);
 		}
+		ImGui.sameLine();
+		if (tr.sel >= 0 && tr.sel < tr.keys.length && ImGui.button("Dup##kf")) {
+			var k = tr.keys[tr.sel];
+			var nk:InspectorKeyframe = {t: k.t + 0.25, x: k.x, y: k.y, angle: k.angle, scaleX: k.scaleX, scaleY: k.scaleY, alpha: k.alpha, ease: k.ease};
+			tr.keys.push(nk);
+			inspector.sortTrack(tr);
+			tr.sel = tr.keys.indexOf(nk);
+			inspector.syncPatchTrack(tr);
+			inspector.markEdited(basic);
+		}
+		if (ImGui.isItemHovered()) ImGui.setTooltip("duplicate the selected keyframe 0.25s later");
+		ImGui.sameLine();
+		if (tr.keys.length > 0 && ImGui.button("Clear##kf")) {
+			tr.keys = [];
+			tr.sel = -1;
+			tr.playing = false;
+			tr.t = 0;
+			inspector.syncPatchTrack(tr);
+			inspector.markEdited(basic);
+		}
+		if (ImGui.isItemHovered()) ImGui.setTooltip("remove every keyframe in this track");
+		if (tr.keys.length > 0 && ImGui.button("Snap keys to beats##kf")) {
+			var beat = (funkin.backend.system.Conductor.bpm > 0) ? 60.0 / funkin.backend.system.Conductor.bpm : 0.25;
+			for (k in tr.keys) k.t = FlxMath.roundDecimal(Math.round(k.t / beat) * beat, 3);
+			inspector.sortTrack(tr);
+			inspector.syncPatchTrack(tr);
+			inspector.markEdited(basic);
+		}
+		if (ImGui.isItemHovered()) ImGui.setTooltip("round all key times to the nearest beat of the current Conductor.bpm");
 
 		// timeline row
 		if (tr.keys.length > 0) {
@@ -370,12 +419,13 @@ class InspectorObjectProperties {
 		if (tr.sel >= 0 && tr.sel < tr.keys.length) {
 			var k = tr.keys[tr.sel];
 			ImGui.separatorText('Keyframe ${tr.sel}');
+			var edited = false;
 			if (ImGui.beginTable("KeyTable", 2, tableFlags)) {
-				if (dragFloatField("Time", "t", k, 0.01)) inspector.markEdited(basic);
-				if (dragFloat2Field("Pos", "x", "y", k, 1)) inspector.markEdited(basic);
-				if (dragFloatField("Angle", "angle", k, 1)) inspector.markEdited(basic);
-				if (dragFloat2Field("Scale", "scaleX", "scaleY", k, 0.01)) inspector.markEdited(basic);
-				if (dragFloatField("Alpha", "alpha", k, 0.01)) inspector.markEdited(basic);
+				if (dragFloatField("Time", "t", k, 0.01)) edited = true;
+				if (dragFloat2Field("Pos", "x", "y", k, 1)) edited = true;
+				if (dragFloatField("Angle", "angle", k, 1)) edited = true;
+				if (dragFloat2Field("Scale", "scaleX", "scaleY", k, 0.01)) edited = true;
+				if (dragFloatField("Alpha", "alpha", k, 0.01)) edited = true;
 				ImGui.tableNextRow();
 				ImGui.tableSetColumnIndex(0);
 				ImGui.text("Ease (to next)");
@@ -387,19 +437,27 @@ class InspectorObjectProperties {
 				if (ei.value < 0) ei.value = 0;
 				if (ImGui.combo("##kfease", ei, names)) {
 					k.ease = names[ei.value];
-					inspector.markEdited(basic);
+					edited = true;
 				}
 				ImGui.endTable();
+			}
+			if (edited) {
+				inspector.sortTrack(tr);
+				tr.sel = tr.keys.indexOf(k);
+				inspector.syncPatchTrack(tr);
+				inspector.markEdited(basic);
 			}
 			if (ImGui.button("Snap pose##kf")) {
 				var nk = inspector.snapshotKey(basic, k.t);
 				k.x = nk.x; k.y = nk.y; k.angle = nk.angle;
 				k.scaleX = nk.scaleX; k.scaleY = nk.scaleY; k.alpha = nk.alpha;
+				inspector.syncPatchTrack(tr);
 				inspector.markEdited(basic);
 			}
 			ImGui.sameLine();
 			if (ImGui.button("Preview key##kf")) {
 				tr.t = k.t;
+				if (tr.patchTrack != null) tr.patchTrack.t = tr.t;
 				inspector.applyTrack(basic, tr);
 			}
 		}

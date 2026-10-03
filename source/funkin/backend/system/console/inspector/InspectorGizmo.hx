@@ -56,7 +56,22 @@ class InspectorGizmo {
 		point.y *= camera.zoom;
 	}
 
-	function prepareObjectCamera(objectData:InspectorObject, basic:FlxBasic) {
+	/**
+	 * Transforms `point` (world coords) into main-viewport window space, like the
+	 * gizmo does. `scrollFactor` defaults to (1,1).
+	 */
+	public function toScreenPoint(point:FlxPoint, camera:FlxCamera, ?scrollFactor:FlxPoint) {
+		var sfx = scrollFactor != null ? scrollFactor.x : 1.0;
+		var sfy = scrollFactor != null ? scrollFactor.y : 1.0;
+		point.x -= camera.viewMarginLeft * sfx;
+		point.y -= camera.viewMarginTop * sfy;
+		point.x *= camera.zoom;
+		point.y *= camera.zoom;
+		transformFlxPointToWindowSpace(point);
+		return point;
+	}
+
+	public function prepareObjectCamera(objectData:InspectorObject, basic:FlxBasic) {
 		var parentsList:Array<Dynamic> = [];
 		var oldDefaultCamerasList:Array<Array<FlxCamera>> = [];
 		

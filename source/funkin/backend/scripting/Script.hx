@@ -129,6 +129,7 @@ class Script extends FlxBasic implements IFlxDestroyable
 			"Conductor" => funkin.backend.system.Conductor,
 			"FunkinShader" => funkin.backend.shaders.FunkinShader,
 			"CustomShader" => funkin.backend.shaders.CustomShader, // deprecated
+			"ShaderPreload" => funkin.backend.shaders.ShaderPreload,
 			"FunkinText" => funkin.backend.FunkinText,
 			"FlxAnimate" => animate.FlxAnimate,
 			"FunkinSprite" => funkin.backend.FunkinSprite,
