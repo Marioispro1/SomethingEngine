@@ -16,14 +16,14 @@ class InspectorGizmo {
 	public var gizmoMode:Int = 0;
 	public var objectWasEdited:Bool = false;
 	var lastViewportID:Int = 0;
-	var positionActive:Bool = false;
+	public var positionActive:Bool = false;
 	var positionX:Float = 0;
 	var positionY:Float = 0;
-	var rotationActive:Bool = false;
+	public var rotationActive:Bool = false;
 	var rotationStartX:Float = 0;
 	var rotationStartY:Float = 0;
 	var rotationStartAngle:Float = 0;
-	var scaleActive:Bool = false;
+	public var scaleActive:Bool = false;
 	var scaleX:Float = 0;
 	var scaleY:Float = 0;
 

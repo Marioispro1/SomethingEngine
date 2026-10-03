@@ -27,6 +27,8 @@ class InspectorObjectProperties {
 
 	#if IMGUI_ENABLED
 	public var inspector:ConsoleInspector = null;
+	public var isOpen = new ImGuiBoolPtr(true);
+	public var forceLayout:Bool = false;
 	var __edited:Bool = false;
 	var renamePtr = new ImGuiStringPtr("");
 	var fieldFilter = new ImGuiStringPtr("");
@@ -64,9 +66,11 @@ class InspectorObjectProperties {
 
 		var selectedObject:Dynamic = objectData.obj;
 
-		ImGui.setNextWindowPos(ImGuiUtil.getWindowSpaceX() + Lib.application.window.width - 300, ImGuiUtil.getWindowSpaceY(), ImGuiCond.FirstUseEver);
-		ImGui.setNextWindowSize(300, Lib.application.window.height, ImGuiCond.FirstUseEver);
-		if (ImGui.begin("Object Properties")) {
+		var wcond = forceLayout ? ImGuiCond.Always : ImGuiCond.FirstUseEver;
+		forceLayout = false;
+		ImGui.setNextWindowPos(ImGuiUtil.getWindowSpaceX() + Lib.application.window.width - 300, ImGuiUtil.getWindowSpaceY(), wcond);
+		ImGui.setNextWindowSize(300, Lib.application.window.height, wcond);
+		if (ImGui.begin("Object Properties", isOpen)) {
 			ImGui.text(objectData.name + " - " + objectData.type);
 
 			var basic:FlxBasic = selectedObject is FlxBasic ? cast selectedObject : null;

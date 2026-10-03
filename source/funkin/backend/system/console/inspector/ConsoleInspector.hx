@@ -45,8 +45,8 @@ typedef InspectorObject = {
 /** A transform keyframe; `ease` is the FlxEase field name used for the segment to the next key. */
 typedef InspectorKeyframe = {t:Float, x:Float, y:Float, angle:Float, scaleX:Float, scaleY:Float, alpha:Float, ease:String};
 
-/** mode: 0 = once, 1 = loop, 2 = pingpong, 3 = reverse-once */
-typedef InspectorTrack = {keys:Array<InspectorKeyframe>, mode:Int, playing:Bool, t:Float, dir:Int, sel:Int};
+/** mode: 0 = once, 1 = loop, 2 = pingpong, 3 = reverse-once. patchTrack = live copy inside the loaded patch script. */
+typedef InspectorTrack = {keys:Array<InspectorKeyframe>, mode:Int, playing:Bool, t:Float, dir:Int, sel:Int, ?patchTrack:Dynamic};
 
 class ConsoleInspector {
 
@@ -86,8 +86,8 @@ class ConsoleInspector {
 	/** Expressions of pre-existing objects deleted through the editor. */
 	var removedExpressions:Array<String> = [];
 
-	/** Custom hscript behavior attached to objects (onClick / update). */
-	var objectHooks:Map<FlxBasic, {updateCode:String, clickCode:String, code:String, script:Script}> = [];
+	/** Custom hscript behavior attached to objects (onClick / update). fromPatch = patch already runs it. */
+	var objectHooks:Map<FlxBasic, {updateCode:String, clickCode:String, code:String, script:Script, fromPatch:Bool}> = [];
 
 	/** Animation operations performed on sprites (method-call bodies, emitted per object). */
 	var animOps:Map<FlxBasic, Array<String>> = [];
@@ -103,6 +103,13 @@ class ConsoleInspector {
 
 	/** Object awaiting a click-in-scene keyframe placement. */
 	public var clickCaptureFor:FlxBasic = null;
+
+	/** Clicking the game view selects the topmost object under the mouse. */
+	public var clickSelect:Bool = true;
+	var clickSelectPtr = new ImGuiBoolPtr(true);
+
+	/** Force window pos/size for one frame (clears stale docking positions). */
+	public var forceLayout:Bool = false;
 
 	var easeNames:Array<String> = null;
 
@@ -122,6 +129,9 @@ class ConsoleInspector {
 	var inspectorObjectsThatNeedUpdating:Array<InspectorObject> = [];
 
 	function updateObjects() {
+		var rootState:FlxState = FlxG.state;
+		if (rootState != null && rootState != lastAdoptedState)
+			adoptPatch(rootState);
 		var states:Array<FlxState> = [FlxG.state];
 		var stateToCheck:FlxState = FlxG.state;
 		while(stateToCheck.subState != null) {
@@ -237,9 +247,21 @@ class ConsoleInspector {
 					if (ImGui.menuItem(k)) { addKind.value = i; jumpToTab = 1; }
 				ImGui.endMenu();
 			}
+			if (ImGui.beginMenu("View")) {
+				if (ImGui.menuItem("Object Properties")) objectProperties.isOpen.value = true;
+				if (ImGui.menuItem("Reset Layout")) {
+					forceLayout = true;
+					objectProperties.isOpen.value = true;
+					#if sys
+					if (sys.FileSystem.exists("imgui.ini")) sys.FileSystem.deleteFile("imgui.ini");
+					#end
+				}
+				ImGui.endMenu();
+			}
 			if (ImGui.beginMenu("Help")) {
 				ImGui.menuItem("Q/W/E/R - none/move/rotate/scale gizmo", null, false, false);
 				ImGui.menuItem("Ctrl while dragging - snap", null, false, false);
+				ImGui.menuItem("Click in scene - select object", null, false, false);
 				ImGui.menuItem("F3 - console, F4 - this window", null, false, false);
 				ImGui.endMenu();
 			}
@@ -382,8 +404,11 @@ class ConsoleInspector {
 
 		FlxG.mouse.visible = true; //TODO: rework this, temp force on
 		
-		ImGui.setNextWindowPos(ImGuiUtil.getWindowSpaceX(), ImGuiUtil.getWindowSpaceY(), ImGuiCond.FirstUseEver);
-		ImGui.setNextWindowSize(320, Lib.application.window.height, ImGuiCond.FirstUseEver);
+		var wcond = forceLayout ? ImGuiCond.Always : ImGuiCond.FirstUseEver;
+		objectProperties.forceLayout = forceLayout;
+		forceLayout = false;
+		ImGui.setNextWindowPos(ImGuiUtil.getWindowSpaceX(), ImGuiUtil.getWindowSpaceY(), wcond);
+		ImGui.setNextWindowSize(320, Lib.application.window.height, wcond);
 		if (ImGui.begin("State Editor", null, ImGuiWindowFlags.MenuBar)) {
 			showEditorMenuBar();
 			showNewStatePopup();
@@ -397,6 +422,8 @@ class ConsoleInspector {
 					if (ImGui.selectable("Position (W)", gizmo.gizmoMode == 0)) gizmo.gizmoMode = 0;
 					if (ImGui.selectable("Rotation (E)", gizmo.gizmoMode == 1)) gizmo.gizmoMode = 1;
 					if (ImGui.selectable("Scale (R)", gizmo.gizmoMode == 2)) gizmo.gizmoMode = 2;
+					ImGui.checkbox("Click scene to select##pick", clickSelectPtr);
+					clickSelect = clickSelectPtr.value;
 					ImGui.unindent();
 					ImGui.separatorText("Scene Tree");
 					for (index => member in currentStateObjects) {
@@ -517,7 +544,7 @@ class ConsoleInspector {
 	public function getOrCreateHooks(obj:FlxBasic) {
 		var h = objectHooks.get(obj);
 		if (h == null)
-			objectHooks.set(obj, h = {updateCode: "", clickCode: "", code: null, script: null});
+			objectHooks.set(obj, h = {updateCode: "", clickCode: "", code: null, script: null, fromPatch: false});
 		return h;
 	}
 
@@ -696,6 +723,117 @@ class ConsoleInspector {
 		markEdited(sprite);
 	}
 
+	/** The state whose patch session was last adopted into the editor. */
+	var lastAdoptedState:FlxState = null;
+
+	/**
+	 * Reads the SNE-META manifest out of the state's patch file (if any) and re-adopts
+	 * editor-created objects, hooks, keyframes, anim ops and snippets into the live
+	 * session, so patch-made objects stay editable and re-export stays idempotent.
+	 */
+	function adoptPatch(state:FlxState) {
+		if (state == lastAdoptedState) return;
+		lastAdoptedState = state;
+		#if sys
+		if (!(state is MusicBeatState)) return;
+		var mbs:MusicBeatState = cast state;
+		var name = mbs.scriptName ?? Type.getClassName(Type.getClass(state)).split('.').pop();
+		var base = resolvePatchLibraryPath();
+		if (base == null) return;
+		var path = '$base/data/states/$name.hx';
+		if (!sys.FileSystem.exists(path)) return;
+		var src = sys.io.File.getContent(path);
+		var mi = src.indexOf('// SNE-META ');
+		if (mi == -1) return;
+		var eol = src.indexOf('\n', mi);
+		if (eol == -1) eol = src.length;
+		var meta:Dynamic = try haxe.Json.parse(StringTools.trim(src.substring(mi + 12, eol))) catch(e) {
+			Logs.warn('State Editor: failed to parse SNE-META: $e');
+			return;
+		};
+		if (meta == null) return;
+
+		// editor-created objects
+		for (od in (meta.objs : Array<Dynamic>)) {
+			var obj:Dynamic = try mbs.stateScripts.get(od.v) catch(e) null;
+			if (obj is FlxBasic && addedObjects.filter(a -> a.varName == od.v).length == 0) {
+				editorNames.set(cast obj, od.v);
+				addedObjects.push({obj: cast obj, varName: od.v, typeName: od.t, createCode: od.c,
+					parent: findParentGroup(cast obj, state)});
+			}
+		}
+		// edited pre-existing objects
+		for (e in (meta.edit : Array<Dynamic>)) {
+			var o = resolveSceneExpr(state, e);
+			if (o is FlxBasic) markEdited(cast o);
+		}
+		// removals
+		for (e in (meta.rem : Array<Dynamic>)) removedExpressions.push(e);
+		// hooks (mark fromPatch - the loaded patch already executes them)
+		for (name in Reflect.fields(meta.hooks)) {
+			var o = resolveSceneExpr(state, name);
+			if (!(o is FlxBasic)) continue;
+			var hd:Dynamic = Reflect.field(meta.hooks, name);
+			objectHooks.set(cast o, {updateCode: hd.u ?? "", clickCode: hd.c ?? "", code: null, script: null, fromPatch: true});
+		}
+		// keyframe tracks
+		for (name in Reflect.fields(meta.trk)) {
+			var o = resolveSceneExpr(state, name);
+			if (!(o is FlxBasic)) continue;
+			var td:Dynamic = Reflect.field(meta.trk, name);
+			var tr = getOrCreateTrack(cast o);
+			tr.mode = td.m ?? 1;
+			tr.keys = [for (k in (td.k : Array<Dynamic>))
+				{t: k.t, x: k.x, y: k.y, angle: k.a, scaleX: k.sx, scaleY: k.sy, alpha: k.al, ease: k.e}];
+			// bind to the patch's live track so Play/Pause drives it
+			var live:Array<Dynamic> = try mbs.stateScripts.get('__sneKeyTracks') catch(e) null;
+			if (live != null)
+				for (pt in live)
+					if (pt.o == o) { tr.patchTrack = pt; break; }
+		}
+		// animation ops
+		for (name in Reflect.fields(meta.anim)) {
+			var o = resolveSceneExpr(state, name);
+			if (!(o is FlxBasic)) continue;
+			var ops:Array<String> = [];
+			for (op in (Reflect.field(meta.anim, name) : Array<Dynamic>)) ops.push(op);
+			animOps.set(cast o, ops);
+		}
+		// draw-order ops
+		for (m in (meta.mov : Array<Dynamic>)) {
+			var o = resolveSceneExpr(state, m.e);
+			var p = resolveSceneExpr(state, m.p);
+			if (o is FlxBasic)
+				moveOps.push({obj: cast o, parent: (p is FlxGroup) ? (cast p : FlxGroup) : cast state, index: m.i});
+		}
+		// queued snippets
+		for (s in (meta.snip : Array<Dynamic>)) patchSnippets.push({code: s.c, phase: s.p});
+		#end
+	}
+
+	/** Resolves a member-path expression (a.b, a.members[2]) or a patch variable name to a live object. */
+	function resolveSceneExpr(state:FlxState, expr:String):Dynamic {
+		if (expr == null || expr == "") return null;
+		var cur:Dynamic = state;
+		for (seg in expr.split('.')) {
+			if (seg == "") return null;
+			var bracket = seg.indexOf('[');
+			var field = bracket == -1 ? seg : seg.substr(0, bracket);
+			cur = Reflect.getProperty(cur, field);
+			if (cur == null && state is MusicBeatState)
+				cur = try (cast state : MusicBeatState).stateScripts.get(field) catch(e) null;
+			if (cur == null) return null;
+			if (bracket != -1) {
+				var close = seg.indexOf(']', bracket);
+				var idx = Std.parseInt(seg.substring(bracket + 1, close));
+				var members:Array<Dynamic> = cur.members;
+				if (idx == null || members == null || idx < 0 || idx >= members.length) return null;
+				cur = members[idx];
+			}
+		}
+		return cur;
+	}
+
 	public function getOrCreateTrack(obj:FlxBasic):InspectorTrack {
 		var tr = keyTracks.get(obj);
 		if (tr == null)
@@ -751,6 +889,16 @@ class ConsoleInspector {
 	}
 
 	public function playTrack(tr:InspectorTrack) {
+		if (tr.patchTrack != null) {
+			// adopted track: drive the patch script's live copy
+			var pt:Dynamic = tr.patchTrack;
+			pt.playing = !(pt.playing != false);
+			tr.playing = pt.playing;
+			var dur = trackDuration(tr);
+			if (tr.playing && tr.mode == 3) { pt.dir = -1; if (pt.t <= 0 || pt.t >= dur) pt.t = dur; }
+			else if (tr.playing && pt.t >= dur) pt.t = 0;
+			return;
+		}
 		tr.playing = !tr.playing;
 		if (!tr.playing) return;
 		var dur = trackDuration(tr);
@@ -818,8 +966,47 @@ class ConsoleInspector {
 		}
 	}
 
-	/** Runs live keyframe playback + click-to-place capture. Called each frame while the editor is open. */
+	/** Picks the topmost visible object under the mouse, searching substates first. */
+	function pickSceneObject():FlxBasic {
+		var states:Array<FlxState> = [];
+		var state:FlxState = FlxG.state;
+		while (state != null) {
+			states.push(state);
+			state = state.subState;
+		}
+		var i = states.length - 1;
+		while (i >= 0) {
+			var r = pickObjectAt(cast states[i]);
+			if (r != null) return r;
+			i--;
+		}
+		return null;
+	}
+
+	function pickObjectAt(group:FlxGroup):FlxBasic {
+		if (group.members == null) return null;
+		var wp = FlxG.mouse.getWorldPosition();
+		var i = group.members.length - 1;
+		while (i >= 0) {
+			var m = group.members[i];
+			if (m is FlxGroup) {
+				var r = pickObjectAt(cast m);
+				if (r != null) return r;
+			} else if (m is FlxObject && m.visible && m.exists) {
+				if ((cast m : FlxObject).overlapsPoint(wp, false)) return m;
+			}
+			i--;
+		}
+		return null;
+	}
+
+	/** Runs live keyframe playback + click-to-place capture + scene click-select. Called each frame while the editor is open. */
 	function tickKeyTracks(elapsed:Float) {
+		if (clickSelect && clickCaptureFor == null && FlxG.mouse.justPressed && !ImGuiIO.wantCaptureMouse
+			&& !gizmo.positionActive && !gizmo.rotationActive && !gizmo.scaleActive) {
+			var pick = pickSceneObject();
+			if (pick != null) selectObject(pick);
+		}
 		if (clickCaptureFor != null && FlxG.mouse.justPressed && !ImGuiIO.wantCaptureMouse) {
 			var obj = clickCaptureFor;
 			clickCaptureFor = null;
@@ -833,6 +1020,12 @@ class ConsoleInspector {
 			if (!isAliveInScene(obj)) {
 				if (dead == null) dead = [];
 				dead.push(obj);
+				continue;
+			}
+			if (tr.patchTrack != null) {
+				// adopted track - the patch script drives it; mirror its time for display
+				tr.t = tr.patchTrack.t;
+				tr.playing = tr.patchTrack.playing != false;
 				continue;
 			}
 			if (tr.playing) {
@@ -903,6 +1096,7 @@ class ConsoleInspector {
 	function runObjectHooks() {
 		var dead:Array<FlxBasic> = null;
 		for (obj => h in objectHooks) {
+			if (h.fromPatch) continue; // the loaded patch script runs these itself
 			// object may belong to a destroyed state; skip + collect for cleanup
 			if (!isAliveInScene(obj)) {
 				(dead ??= []).push(obj);
@@ -1102,6 +1296,45 @@ class ConsoleInspector {
 		var trackStr = trackCode.toString();
 		var hasTracks = trackStr.length > 0;
 
+		// session manifest - lets the editor re-adopt patch objects/hooks/tracks next launch
+		var meta:Dynamic = {
+			objs: [for (a in addedObjects) if (isInScene(a.obj, cast state)) {v: a.varName, c: a.createCode, t: a.typeName}],
+			rem: removedExpressions.copy(),
+			snip: [for (s in patchSnippets) {c: s.code, p: s.phase}],
+			edit: [],
+			hooks: {},
+			trk: {},
+			anim: {},
+			mov: []
+		};
+		for (o in editedObjects.keys()) {
+			var e = exprFor(o);
+			if (e != null && isInScene(o, cast state)) (meta.edit : Array<String>).push(e);
+		}
+		for (o => h in objectHooks) {
+			var e = exprFor(o);
+			if (e != null && isInScene(o, cast state))
+				Reflect.setField(meta.hooks, e, {c: h.clickCode, u: h.updateCode});
+		}
+		for (o => tr in keyTracks) {
+			if (tr.keys.length == 0) continue;
+			var e = exprFor(o);
+			if (e != null && isInScene(o, cast state))
+				Reflect.setField(meta.trk, e, {m: tr.mode, k: [
+					for (k in tr.keys) {t: k.t, x: k.x, y: k.y, a: k.angle, sx: k.scaleX, sy: k.scaleY, al: k.alpha, e: k.ease}
+				]});
+		}
+		for (o => ops in animOps) {
+			var e = exprFor(o);
+			if (e != null && isInScene(o, cast state)) Reflect.setField(meta.anim, e, ops);
+		}
+		for (m in moveOps) {
+			var e = exprFor(m.obj);
+			if (e != null && isInScene(m.obj, cast state))
+				(meta.mov : Array<Dynamic>).push({e: e, p: exprFor(m.parent), i: m.index});
+		}
+		notes.add('// SNE-META ' + haxe.Json.stringify(meta) + '\n');
+
 		writePatchFile(path, post.toString() + trackStr, upd.toString() + (hasTracks ? '__sneAnimateKeys(elapsed);\n' : ''),
 			notes.toString() + decls.toString() + (hasTracks ? TRACK_PLAYER_SRC : ''));
 		saveStatus = 'Saved $stateName.hx';
@@ -1153,12 +1386,12 @@ class ConsoleInspector {
 	static var TRACK_PLAYER_SRC = 'var __sneKeyTracks = [];\n'
 		+ 'function __snePlayKeys(o, keys, mode) {\n'
 		+ '	var t = (mode == 3) ? (keys.length == 0 ? 0.0 : keys[keys.length-1].t) : 0.0;\n'
-		+ '	__sneKeyTracks.push({o: o, keys: keys, mode: mode, t: t, dir: (mode == 3) ? -1 : 1});\n'
+		+ '	__sneKeyTracks.push({o: o, keys: keys, mode: mode, t: t, dir: (mode == 3) ? -1 : 1, playing: true});\n'
 		+ '}\n'
 		+ 'function __sneAnimateKeys(elapsed) {\n'
 		+ '	for (tr in __sneKeyTracks) {\n'
 		+ '		var keys = tr.keys; var o = tr.o;\n'
-		+ '		if (o == null || o.exists == false || keys.length == 0) continue;\n'
+		+ '		if (o == null || o.exists == false || keys.length == 0 || tr.playing == false) continue;\n'
 		+ '		var dur = keys[keys.length-1].t;\n'
 		+ '		if (dur <= 0) continue;\n'
 		+ '		tr.t += elapsed * tr.dir;\n'
