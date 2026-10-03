@@ -253,7 +253,7 @@ class ConsoleHscript {
 			var fieldObj:Dynamic = null;
 			if (baseExpr != null) {
 				try {
-					fieldObj = interp.expr(parser.mk(EField(baseExpr, field), 0, 0));
+					@:privateAccess fieldObj = interp.expr(parser.mk(EField(baseExpr, field), 0, 0));
 				} catch(e) {}
 			}
 			if (fieldObj != null) {
