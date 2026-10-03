@@ -142,7 +142,7 @@ final class Logs {
 
 		#if IMGUI_ENABLED
 		@:privateAccess
-		ConsoleUI.instance.addToConsole(text);
+		if (ConsoleUI.instance != null) ConsoleUI.instance.addToConsole(text);
 		#end
 	}
 

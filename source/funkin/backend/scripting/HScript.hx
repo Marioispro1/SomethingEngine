@@ -56,11 +56,14 @@ class HScript extends Script {
 		if (code == null || code.length == 0)
 			return null;
 		var cached = __astCache.get(cacheKey);
-		if (cached != null && cached.code == code)
+		if (cached != null && cached.code == code) {
+			Logs.verbose('[HScript] AST cache hit: $cacheKey');
 			return cached.expr;
+		}
 		parser.line = 1; // fun fact: this is all you need to reuse a parser without issues. all the other vars get reset on parse.
 		var expr = parser.parseString(code, origin);
 		__astCache.set(cacheKey, {code: code, expr: expr});
+		Logs.verbose('[HScript] Parsed and cached AST: $cacheKey');
 		return expr;
 	}
 
