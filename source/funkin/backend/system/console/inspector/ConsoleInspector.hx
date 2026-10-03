@@ -12,6 +12,7 @@ import funkin.backend.assets.IModsAssetLibrary;
 import funkin.backend.assets.ModsFolder;
 import funkin.backend.assets.ModsFolderLibrary;
 import funkin.backend.scripting.HScript;
+import funkin.backend.scripting.ModState;
 import funkin.backend.scripting.Script;
 import funkin.backend.scripting.ScriptPack;
 import funkin.game.Stage;
@@ -98,6 +99,8 @@ class ConsoleInspector {
 	var addCustomCode = new ImGuiStringPtr("new flixel.FlxSprite(0, 0, Paths.image('menus/menuBG'))");
 	var codeRunnerText = new ImGuiStringPtr("// 'obj' = selection, 'state' = FlxG.state\ntrace(obj);\n");
 	var codeRunnerPhase = new ImGuiIntPtr(0);
+	var newStateName = new ImGuiStringPtr("MyState");
+	var jumpToTab:Int = -1;
 	var saveStatus:String = "";
 	var runStatus:String = "";
 
@@ -199,6 +202,166 @@ class ConsoleInspector {
 		}
 	}
 
+	function showEditorMenuBar() {
+		if (ImGui.beginMenuBar()) {
+			if (ImGui.beginMenu("File")) {
+				if (ImGui.menuItem("New State...")) ImGui.openPopup("##newState");
+				if (ImGui.beginMenu("Open Scripted State")) {
+					var states = listScriptedStates();
+					if (states.length == 0) ImGui.menuItem("(none found)", null, false, false);
+					for (s in states) if (ImGui.menuItem(s)) openScriptedState(s);
+					ImGui.endMenu();
+				}
+				ImGui.separator();
+				if (ImGui.menuItem("Reload State Scripts")) reloadStateScripts();
+				if (ImGui.menuItem("Save Patch", "writes data/states/<State>.hx")) savePatch();
+				ImGui.endMenu();
+			}
+			if (ImGui.beginMenu("Add")) {
+				var kinds = ["Sprite", "Text", "Button", "Group", "Custom (code)"];
+				for (i => k in kinds)
+					if (ImGui.menuItem(k)) { addKind.value = i; jumpToTab = 1; }
+				ImGui.endMenu();
+			}
+			if (ImGui.beginMenu("Help")) {
+				ImGui.menuItem("Q/W/E/R - none/move/rotate/scale gizmo", null, false, false);
+				ImGui.menuItem("Ctrl while dragging - snap", null, false, false);
+				ImGui.menuItem("F3 - console, F4 - this window", null, false, false);
+				ImGui.endMenu();
+			}
+			ImGui.endMenuBar();
+		}
+	}
+
+	function showNewStatePopup() {
+		#if sys
+		if (ImGui.beginPopup("##newState")) {
+			ImGui.textWrapped("Creates data/states/<name>.hx and opens it as a scripted state.");
+			ImGui.setNextItemWidth(-1);
+			ImGui.inputText("Name##newState", newStateName);
+			if (ImGui.button("Create & Open##newState")) {
+				createAndOpenState(newStateName.value);
+				ImGui.closeCurrentPopup();
+			}
+			ImGui.sameLine();
+			if (ImGui.button("Cancel##newState")) ImGui.closeCurrentPopup();
+			ImGui.endPopup();
+		}
+		#end
+	}
+
+	function showCreateTab() {
+		ImGui.combo("Type##inspectorAdd", addKind, ["Sprite", "Text", "Button", "Group", "Custom (code)"]);
+		switch (addKind.value) {
+			case 0:
+				ImGui.inputText("Image##inspectorAdd", addImagePath);
+				if (ImGui.isItemHovered()) ImGui.setTooltip("path inside images/, e.g. menus/menuBG");
+			case 1 | 2:
+				ImGui.inputText("Text##inspectorAdd", addTextContent);
+				ImGui.dragInt("Size##inspectorAdd", addTextSize);
+			case 4:
+				ImGui.textWrapped("Any hscript expression returning a FlxBasic, e.g. new funkin.game.Character(0, 0, 'bf')");
+				ImGui.inputTextMultiline("##inspectorAddCustom", addCustomCode, ImGui.getContentRegionAvail().x, 60);
+			default:
+		}
+		ImGui.textWrapped("Added to the selected group, or the state itself.");
+		if (ImGui.button("Create##inspectorAdd")) createInspectorObject();
+		if (selectedObject != null && selectedObject is FlxBasic) {
+			ImGui.separator();
+			if (ImGui.button("Delete Selected##inspector")) deleteInspectorObject(cast selectedObject);
+		}
+	}
+
+	function showCodeTab() {
+		ImGui.textWrapped("'obj' = selected object, 'state' = current state. Runs top-level hscript.");
+		ImGui.inputTextMultiline("##runnerCode", codeRunnerText, ImGui.getContentRegionAvail().x, 140);
+		if (ImGui.button("Run Now##runner")) runSnippet();
+		ImGui.sameLine();
+		ImGui.setNextItemWidth(110);
+		ImGui.combo("##runnerPhase", codeRunnerPhase, ["postCreate", "update"]);
+		ImGui.sameLine();
+		if (ImGui.button("Append to Patch##runner")) {
+			patchSnippets.push({code: codeRunnerText.value, phase: codeRunnerPhase.value});
+			runStatus = "Queued (" + (codeRunnerPhase.value == 0 ? "create" : "update") + ")";
+		}
+		if (runStatus != "") ImGui.textWrapped(runStatus);
+
+		if (patchSnippets.length > 0) {
+			ImGui.separatorText("Queued in patch:");
+			var toRemove = -1;
+			for (i => sn in patchSnippets) {
+				ImGui.pushIDFromInt(i);
+				var preview = sn.code.split("\n")[0];
+				if (preview.length > 38) preview = preview.substr(0, 35) + "...";
+				ImGui.bulletText((sn.phase == 0 ? "[create] " : "[update] ") + preview);
+				ImGui.sameLine();
+				if (ImGui.smallButton("x")) toRemove = i;
+				ImGui.popID();
+			}
+			if (toRemove != -1) patchSnippets.splice(toRemove, 1);
+		}
+	}
+
+	function showExportTab() {
+		ImGui.textWrapped("Exports edits as data/states/<State>.hx - auto-loaded every time the state opens.");
+		ImGui.separator();
+		if (ImGui.button("Save Patch##export")) savePatch();
+		if (saveStatus != "") ImGui.textWrapped(saveStatus);
+		#if sys
+		ImGui.separator();
+		var base = resolvePatchLibraryPath();
+		ImGui.textWrapped("Target: " + (base != null ? base + "data/states/" : "no writable library"));
+		#end
+	}
+
+	function listScriptedStates():Array<String> {
+		var out:Array<String> = [];
+		#if sys
+		var seen:Map<String, Bool> = [];
+		for (l in ModsFolder.getLoadedModsLibs()) {
+			var mfl:ModsFolderLibrary = (l is ModsFolderLibrary) ? cast l : null;
+			if (mfl == null) continue;
+			var dir = mfl.basePath + "/data/states";
+			if (!sys.FileSystem.exists(dir)) continue;
+			for (f in sys.FileSystem.readDirectory(dir)) {
+				if (!f.endsWith(".hx") || seen.exists(f)) continue;
+				seen.set(f, true);
+				out.push(f.substr(0, f.length - 3));
+			}
+		}
+		out.sort(function(a, b) return a < b ? -1 : (a > b ? 1 : 0));
+		#end
+		return out;
+	}
+
+	function openScriptedState(name:String) {
+		FlxG.switchState(new ModState(name));
+	}
+
+	function createAndOpenState(name:String) {
+		#if sys
+		var clean = sanitizeVarName(name);
+		var base = resolvePatchLibraryPath();
+		if (base == null) { saveStatus = "No writable library"; return; }
+		var dir = '$base/data/states';
+		sys.FileSystem.createDirectory(dir);
+		var path = '$dir/$clean.hx';
+		if (!sys.FileSystem.exists(path)) {
+			sys.io.File.saveContent(path,
+				'// Scripted state: $clean - edit with the State Editor (F4) or directly.\n\n'
+				+ 'function postCreate() {\n\t// add(sprite), state fields are in scope\n}\n\n'
+				+ 'function update(elapsed) {\n}\n\n'
+				+ 'function destroy() {\n}\n');
+		}
+		openScriptedState(clean);
+		#end
+	}
+
+	function reloadStateScripts() {
+		if (FlxG.state is MusicBeatState)
+			(cast FlxG.state : MusicBeatState).stateScripts.reload();
+	}
+
 	public function displayUI() {
 		
 		updateObjects();
@@ -206,74 +369,53 @@ class ConsoleInspector {
 		FlxG.mouse.visible = true; //TODO: rework this, temp force on
 		
 		ImGui.setNextWindowPos(ImGuiUtil.getWindowSpaceX(), ImGuiUtil.getWindowSpaceY(), ImGuiCond.FirstUseEver);
-		ImGui.setNextWindowSize(300, Lib.application.window.height, ImGuiCond.FirstUseEver);
-		if (ImGui.begin("Inspector")) {
-			ImGui.separatorText("Tools/Gizmo");
-			ImGui.indent();
-			if (ImGui.selectable("None (Q)", gizmo.gizmoMode == -1)) gizmo.gizmoMode = -1;
-			if (ImGui.selectable("Position (W)", gizmo.gizmoMode == 0)) gizmo.gizmoMode = 0;
-			if (ImGui.selectable("Rotation (E)", gizmo.gizmoMode == 1)) gizmo.gizmoMode = 1;
-			if (ImGui.selectable("Scale (R)", gizmo.gizmoMode == 2)) gizmo.gizmoMode = 2;
-			ImGui.unindent();
+		ImGui.setNextWindowSize(320, Lib.application.window.height, ImGuiCond.FirstUseEver);
+		if (ImGui.begin("State Editor", null, ImGuiWindowFlags.MenuBar)) {
+			showEditorMenuBar();
+			showNewStatePopup();
 
-			ImGui.separatorText("State Editor");
-			if (ImGui.collapsingHeader("Add Object##inspector")) {
-				ImGui.indent();
-				ImGui.combo("Type##inspectorAdd", addKind, ["Sprite", "Text", "Button", "Group", "Custom (code)"]);
-				switch (addKind.value) {
-					case 0:
-						ImGui.inputText("Image##inspectorAdd", addImagePath);
-					case 1 | 2:
-						ImGui.inputText("Text##inspectorAdd", addTextContent);
-						ImGui.dragInt("Size##inspectorAdd", addTextSize);
-					case 4:
-						ImGui.text("any hscript expr that makes a FlxBasic:");
-						ImGui.inputTextMultiline("##inspectorAddCustom", addCustomCode, ImGui.getContentRegionAvail().x, 60);
-					default:
-				}
-				ImGui.text("(added to selected group, or the state)");
-				if (ImGui.button("Create##inspectorAdd")) createInspectorObject();
-				ImGui.unindent();
-			}
-
-			if (ImGui.collapsingHeader("Code Runner##inspector")) {
-				ImGui.indent();
-				ImGui.text("'obj' = selected object, 'state' = current state");
-				ImGui.inputTextMultiline("##runnerCode", codeRunnerText, ImGui.getContentRegionAvail().x, 110);
-				if (ImGui.button("Run Now##runner")) runSnippet();
-				ImGui.sameLine();
-				ImGui.setNextItemWidth(110);
-				ImGui.combo("##runnerPhase", codeRunnerPhase, ["postCreate", "update"]);
-				ImGui.sameLine();
-				if (ImGui.button("Append to Patch##runner")) {
-					patchSnippets.push({code: codeRunnerText.value, phase: codeRunnerPhase.value});
-					runStatus = "Appended to patch (" + (codeRunnerPhase.value == 0 ? "create" : "update") + ")";
-				}
-				if (runStatus != "") ImGui.text(runStatus);
-				ImGui.unindent();
-			}
-			if (selectedObject != null) {
-				if (ImGui.button("Delete Selected##inspector") && selectedObject is FlxBasic)
-					deleteInspectorObject(cast selectedObject);
-			}
-			if (ImGui.button("Save Patch (data/states)##inspector")) savePatch();
-			if (saveStatus != "") { ImGui.sameLine(); ImGui.text(saveStatus); }
-			ImGui.separatorText("States");
-			for (index => member in currentStateObjects) {
-				var nodeID = member.name + index;
-				var flags = ImGuiTreeNodeFlags.DefaultOpen;
-				if (member.obj == selectedObject) flags |= ImGuiTreeNodeFlags.Selected;
-				if (ImGui.treeNodeEx(nodeID, flags, member.name + " (" + member.type + ")")) {
-					if (ImGui.isItemClicked()) {
-						selectObject(member.obj);
+			if (ImGui.beginTabBar("##stateEditorTabs")) {
+				if (ImGui.beginTabItem("Scene", null, jumpToTab == 0 ? ImGuiTabItemFlags.SetSelected : 0)) {
+					jumpToTab = -1;
+					ImGui.separatorText("Tools/Gizmo");
+					ImGui.indent();
+					if (ImGui.selectable("None (Q)", gizmo.gizmoMode == -1)) gizmo.gizmoMode = -1;
+					if (ImGui.selectable("Position (W)", gizmo.gizmoMode == 0)) gizmo.gizmoMode = 0;
+					if (ImGui.selectable("Rotation (E)", gizmo.gizmoMode == 1)) gizmo.gizmoMode = 1;
+					if (ImGui.selectable("Scale (R)", gizmo.gizmoMode == 2)) gizmo.gizmoMode = 2;
+					ImGui.unindent();
+					ImGui.separatorText("Scene Tree");
+					for (index => member in currentStateObjects) {
+						var nodeID = member.name + index;
+						var flags = ImGuiTreeNodeFlags.DefaultOpen;
+						if (member.obj == selectedObject) flags |= ImGuiTreeNodeFlags.Selected;
+						if (ImGui.treeNodeEx(nodeID, flags, member.name + " (" + member.type + ")")) {
+							if (ImGui.isItemClicked()) {
+								selectObject(member.obj);
+							}
+							if (member.members.length > 0) {
+								generateTreeForMembers(nodeID, member);
+							}
+							ImGui.treePop();
+						}
 					}
-					if (member.members.length > 0) {
-						generateTreeForMembers(nodeID, member);
-					}
-					ImGui.treePop();
+					ImGui.endTabItem();
 				}
+				if (ImGui.beginTabItem("Create", null, jumpToTab == 1 ? ImGuiTabItemFlags.SetSelected : 0)) {
+					jumpToTab = -1;
+					showCreateTab();
+					ImGui.endTabItem();
+				}
+				if (ImGui.beginTabItem("Code")) {
+					showCodeTab();
+					ImGui.endTabItem();
+				}
+				if (ImGui.beginTabItem("Export")) {
+					showExportTab();
+					ImGui.endTabItem();
+				}
+				ImGui.endTabBar();
 			}
-			//ImGui.separatorText("Cameras");
 		}
 		ImGui.end();
 
