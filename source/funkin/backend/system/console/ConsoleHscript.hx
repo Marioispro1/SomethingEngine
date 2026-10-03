@@ -139,14 +139,18 @@ class ConsoleHscript {
 		if (str.endsWith(";")) str = str.substr(0, -1);
 		return str;
 	}
+	private var __lastParsedExpr:Expr = null;
+
 	public function getObj(str:String) {
 		var obj:Dynamic = null;
+		__lastParsedExpr = null;
 		try {
-			obj = interp.expr(parser.parseString(str, "console"));
+			__lastParsedExpr = parser.parseString(str, "console");
+			obj = interp.expr(__lastParsedExpr);
 		} catch(e:Error) {
 			//ignore errors while getting fields
 		} catch(e) {
-			
+
 		}
 		return obj;
 	}
@@ -204,6 +208,9 @@ class ConsoleHscript {
 	public function tryGetFields(str:String) {
 		var obj:Dynamic = getObj(prepareString(str));
 		if (obj == null) return [];
+		// Reuse the already-parsed base expression for field lookups instead of
+		// re-parsing "str.field" once per field on every autocomplete keystroke.
+		var baseExpr = __lastParsedExpr;
 
 		var returnFields:Array<ConsoleHscriptField> = [];
 		var fields:Array<String> = [];
@@ -243,7 +250,12 @@ class ConsoleHscript {
 		}
 
 		for (field in filteredFields) {
-			var fieldObj = getObj(prepareString(str) + "." + field);
+			var fieldObj:Dynamic = null;
+			if (baseExpr != null) {
+				try {
+					fieldObj = interp.expr(parser.mk(EField(baseExpr, field), 0, 0));
+				} catch(e) {}
+			}
 			if (fieldObj != null) {
 				returnFields.push({
 					name: field,

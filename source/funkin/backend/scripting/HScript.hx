@@ -36,6 +36,34 @@ class HScript extends Script {
 			__parserPool.push(parser);
 	}
 
+	/**
+	 * Cache of parsed expressions (ASTs), shared across every HScript instance.
+	 * Parsing is deterministic for a given source and `Interp` never mutates the
+	 * returned Expr tree, so all instances of a script can execute the same AST.
+	 * Entries are keyed by asset path and validated against the current source
+	 * code, so editing a script automatically triggers a reparse.
+	 */
+	private static var __astCache:Map<String, {code:String, expr:Expr}> = [];
+
+	/**
+	 * Clears the parsed AST cache. Called on mod switch.
+	 */
+	public static function clearASTCache() {
+		__astCache.clear();
+	}
+
+	private function parseCached(code:String, cacheKey:String, origin:String):Expr {
+		if (code == null || code.length == 0)
+			return null;
+		var cached = __astCache.get(cacheKey);
+		if (cached != null && cached.code == code)
+			return cached.expr;
+		parser.line = 1; // fun fact: this is all you need to reuse a parser without issues. all the other vars get reset on parse.
+		var expr = parser.parseString(code, origin);
+		__astCache.set(cacheKey, {code: code, expr: expr});
+		return expr;
+	}
+
 	public override function onCreate(path:String) {
 		super.onCreate(path);
 
@@ -69,8 +97,7 @@ class HScript extends Script {
 
 	public override function loadFromString(code:String) {
 		try {
-			if (code != null && code.length > 0)
-				expr = parser.parseString(code, fileName);
+			expr = parseCached(code, rawPath, fileName);
 		} catch(e:Error) {
 			_errorHandler(e);
 		} catch(e) {
@@ -96,10 +123,7 @@ class HScript extends Script {
 				var code = Assets.getText(p);
 				var expr:Expr = null;
 				try {
-					if (code != null && code.length > 0) {
-						parser.line = 1; // fun fact: this is all you need to reuse a parser without issues. all the other vars get reset on parse.
-						expr = parser.parseString(code, cl.join("/") + "." + hxExt);
-					}
+					expr = parseCached(code, p, cl.join("/") + "." + hxExt);
 				} catch(e:Error) {
 					_errorHandler(e);
 				} catch(e) {
