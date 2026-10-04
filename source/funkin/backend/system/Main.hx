@@ -97,6 +97,12 @@ class Main extends Sprite
 
 		addChild(game = new FunkinGame(gameWidth, gameHeight, MainState, Options.framerate, Options.framerate, skipSplash, startFullscreen));
 
+		// our dev console replaces the flixel debugger overlay - unbind its toggle keys
+		// (F2 collides with the dev console key, ` and \ pop it open randomly)
+		#if FLX_DEBUG
+		FlxG.debugger.toggleKeys = [];
+		#end
+
 		#if (!mobile && !web)
 		addChild(framerateSprite = new Framerate());
 		SystemInfo.init();
