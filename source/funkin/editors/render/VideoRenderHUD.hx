@@ -22,11 +22,20 @@ class VideoRenderHUD extends FlxSpriteGroup {
 
 	var nextRefresh:Float = 0;
 
+	var overlayTitle:String;
+
 	public function new(songName:String, difficulty:String) {
 		super();
 
+		overlayTitle = '$songName  [$difficulty]';
 		buildPanel(songName, difficulty);
 		refresh();
+
+		// on-screen progress drawn through imgui: it renders after the encoder's
+		// postDraw capture, so the user sees it but it never lands in the video
+		#if IMGUI_ENABLED
+		ImGuiHandler.instance.addCallback(drawOverlay);
+		#end
 	}
 
 	function buildPanel(songName:String, difficulty:String) {
@@ -83,6 +92,30 @@ class VideoRenderHUD extends FlxSpriteGroup {
 		}
 	}
 
+	#if IMGUI_ENABLED
+	function drawOverlay() {
+		if (!VideoRenderer.armed) return;
+
+		var dl = ImGui.getForegroundDrawList();
+		var winW = openfl.Lib.application.window.width;
+		var winH = openfl.Lib.application.window.height;
+		var p = VideoRenderer.progress;
+		var encoding = VideoEncoder.active;
+		var totalFrames = VideoRenderer.totalFrames;
+		var label = (encoding ? 'RENDERING' : 'PREVIEW') + '  $overlayTitle'
+			+ '   frame ${VideoRenderer.frameIndex}/${totalFrames > 0 ? Std.string(totalFrames) : "?"}'
+			+ '   ${Math.round(p * 100)}%'
+			+ '   eta ' + (VideoRenderer.eta < 0 ? "--:--" : VideoRenderer.formatTime(VideoRenderer.eta * 1000))
+			+ (VideoEncoder.lastError != null ? '   PROBLEM: ${VideoEncoder.lastError}' : "");
+		var col = encoding ? 0xFFFF5555 : 0xFFFFAA55;
+		var barH = 4.0;
+		var panelH = 26.0;
+		dl.addRectFilled([0, winH - panelH - barH, winW, winH], 0x99000000, 0);
+		dl.addText(12, winH - panelH - barH + 7, col, label, null);
+		dl.addRectFilled([0, winH - barH, winW * p, winH], 0xFF3FA9F5, 0);
+	}
+	#end
+
 	function refresh() {
 		hudCamera.visible = !VideoEncoder.active;
 
@@ -121,6 +154,9 @@ class VideoRenderHUD extends FlxSpriteGroup {
 	}
 
 	override function destroy() {
+		#if IMGUI_ENABLED
+		ImGuiHandler.instance.removeCallback(drawOverlay);
+		#end
 		super.destroy();
 
 		WindowUtils.resetAffixes();

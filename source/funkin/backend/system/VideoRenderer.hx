@@ -20,6 +20,14 @@ typedef VideoRenderSettings = {
 	var height:Int;
 
 	var gif:Bool;
+
+	/** 0 = H.264, 1 = H.265, 2 = VP9, 3 = ProRes. */
+	var codec:Int;
+
+	var crf:Float;
+
+	/** 0 = fastest .. 4 = slowest/best, mapped per codec. */
+	var preset:Int;
 }
 
 typedef RenderResolution = {
@@ -35,7 +43,8 @@ class VideoRenderer {
 		return {
 			fps: 60, startMs: 0, endMs: 0,
 			includeCountdown: true, botplay: true, uncapped: true, encode: true,
-			width: 0, height: 0, gif: false
+			width: 0, height: 0, gif: false,
+			codec: 0, crf: 18, preset: 2
 		};
 
 	static inline var maxLoopRate:Int = 1000;

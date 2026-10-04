@@ -19,6 +19,9 @@ typedef QueuedRender = {
 	var height:Int;
 	var gif:Bool;
 	var useReplay:Bool;
+	var codec:Int;
+	var crf:Float;
+	var preset:Int;
 };
 
 class VideoRenderSettingsScreen extends UISubstateWindow {
@@ -36,6 +39,9 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 	var uncappedCheckbox:UICheckbox;
 	var gifCheckbox:UICheckbox;
 	var replayCheckbox:UICheckbox;
+	var codecDropDown:UIDropDown;
+	var presetDropDown:UIDropDown;
+	var crfStepper:UINumericStepper;
 	var queueText:UIText;
 	var problemText:UIText;
 	var outputText:UIText;
@@ -55,7 +61,7 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 	public override function create() {
 		winTitle = t("title");
 		winWidth = 620;
-		winHeight = 600;
+		winHeight = 680;
 
 		super.create();
 
@@ -93,6 +99,30 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 			[for (r in VideoRenderer.resolutionOptions()) {label: r.name, value: r}]);
 		add(resDropDown);
 		addLabelOn(resDropDown, t("resolution") + ' (' + t("resolutionHint", [maxRes.width, maxRes.height]) + ')');
+
+		colY += 74;
+		codecDropDown = new UIDropDown(left, colY, 180, 32, [
+			{label: "H.264 (mp4)", value: 0},
+			{label: "H.265 (mp4)", value: 1},
+			{label: "VP9 (webm)", value: 2},
+			{label: "ProRes (mov)", value: 3}
+		], s.codec);
+		add(codecDropDown);
+		addLabelOn(codecDropDown, "Codec");
+
+		presetDropDown = new UIDropDown(codecDropDown.x + codecDropDown.bWidth + 16, colY, 170, 32, [
+			{label: "Fastest", value: 0},
+			{label: "Fast", value: 1},
+			{label: "Balanced", value: 2},
+			{label: "Quality", value: 3},
+			{label: "Best", value: 4}
+		], s.preset);
+		add(presetDropDown);
+		addLabelOn(presetDropDown, "Preset");
+
+		crfStepper = new UINumericStepper(presetDropDown.x + presetDropDown.bWidth + 16, colY, s.crf, 1, 0, 0, 51, 80);
+		add(crfStepper);
+		addLabelOn(crfStepper, "CRF (lower = better)");
 
 		colY += 74;
 		startStepper = new UINumericStepper(left, colY, s.startMs / 1000, 0.1, 2, 0, null, 120);
@@ -158,7 +188,10 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 			width: res != null ? res.width : 0,
 			height: res != null ? res.height : 0,
 			gif: gifCheckbox.checked,
-			useReplay: replayCheckbox.checked
+			useReplay: replayCheckbox.checked,
+			codec: codecDropDown.value,
+			crf: crfStepper.value,
+			preset: presetDropDown.value
 		};
 	}
 
@@ -181,6 +214,9 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 		s.width = item.width;
 		s.height = item.height;
 		s.gif = item.gif;
+		s.codec = item.codec;
+		s.crf = item.crf;
+		s.preset = item.preset;
 		VideoRenderer.applyOutputSize();
 
 		VideoRenderer.replayPending = null;

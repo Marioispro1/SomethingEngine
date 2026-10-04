@@ -17,7 +17,7 @@ typedef VideoRenderResult = {
 class VideoEncoder {
 	public static inline var outputDir:String = "renders";
 
-	static inline var capturePriority:Int = -10000;
+
 
 	public static var active(default, null):Bool = false;
 
@@ -82,8 +82,46 @@ class VideoEncoder {
 		#end
 	}
 
+	/** Container extension for the selected codec: h264/h265 -> mp4, vp9 -> webm, prores -> mov. */
+	public static function codecExt():String
+		return switch (VideoRenderer.settings.codec) {
+			case 1, 0: "mp4";
+			case 2: "webm";
+			case 3: "mov";
+			default: "mp4";
+		}
+
+	static function codecLabel():String
+		return switch (VideoRenderer.settings.codec) {
+			case 1: "h265";
+			case 2: "vp9";
+			case 3: "prores";
+			default: "h264";
+		}
+
+	/** ffmpeg args for the chosen codec; preset index 0-4 maps to each encoder's speed/quality ladder. */
+	static function codecArgs():Array<String> {
+		var s = VideoRenderer.settings;
+		var crf = Std.string(Math.round(s.crf));
+		return switch (s.codec) {
+			case 1: ["-c:v", "libx265",
+				"-preset", ["ultrafast", "veryfast", "fast", "medium", "slow"][s.preset],
+				"-crf", crf, "-tag:v", "hvc1", "-pix_fmt", "yuv420p"];
+			case 2: ["-c:v", "libvpx-vp9",
+				"-deadline", "realtime",
+				"-cpu-used", ["8", "6", "4", "2", "0"][s.preset],
+				"-crf", crf, "-b:v", "0", "-row-mt", "1", "-pix_fmt", "yuv420p"];
+			case 3: ["-c:v", "prores_ks",
+				"-profile:v", ["4", "4", "3", "2", "2"][s.preset],
+				"-vendor", "apl0", "-pix_fmt", "yuv422p10le"];
+			default: ["-c:v", "libx264",
+				"-preset", ["ultrafast", "veryfast", "fast", "medium", "slow"][s.preset],
+				"-crf", crf, "-pix_fmt", "yuv420p"];
+		}
+	}
+
 	public static function plannedPath(baseName:String):String
-		return '$outputDir/${sanitize(baseName)}.mp4';
+		return '$outputDir/${sanitize(baseName)}.${codecExt()}';
 
 	public static function start(baseName:String, fps:Float):Bool {
 		#if sys
@@ -115,7 +153,7 @@ class VideoEncoder {
 		catch (e:Dynamic) return startFailed('Could not create the $outputDir folder: $e');
 
 		outputPath = uniquePath(sanitize(baseName));
-		silentPath = outputPath.substr(0, outputPath.length - 4) + ".video.mp4";
+		silentPath = outputPath.substr(0, outputPath.length - codecExt().length) + "video." + codecExt();
 
 		var args = [
 			"-y", "-hide_banner", "-loglevel", "error", "-nostats",
@@ -123,11 +161,8 @@ class VideoEncoder {
 			"-s", '${width}x${height}',
 			"-r", Std.string(fps),
 			"-i", "-",
-			"-vf", "vflip,crop=trunc(iw/2)*2:trunc(ih/2)*2",
-			"-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
-			"-pix_fmt", "yuv420p",
-			silentPath
-		];
+			"-vf", "vflip,crop=trunc(iw/2)*2:trunc(ih/2)*2"
+		].concat(codecArgs()).concat([silentPath]);
 
 		try proc = new sys.io.Process("ffmpeg", args)
 		catch (e:Dynamic) return startFailed('ffmpeg would not start ($e). Is it on PATH?');
@@ -142,11 +177,14 @@ class VideoEncoder {
 
 		@:privateAccess FlxG.stage.__forceRender = true;
 
-		window.onRender.add(captureFrame, false, capturePriority);
+		// capture at postDraw: the scene is fully rendered but dev overlays
+		// (console, inspector, imgui windows) haven't drawn yet - they stay
+		// on screen for the user without polluting the video.
+		FlxG.signals.postDraw.add(captureFrame);
 		hooked = true;
 		active = true;
 
-		log('--- start: $outputPath  ${width}x$height @ ${fps}fps  window=${window.width}x${window.height} scale=${window.scale}'
+		log('--- start: $outputPath  ${width}x$height @ ${fps}fps ${codecLabel()}  window=${window.width}x${window.height} scale=${window.scale}'
 			+ '  raw=${Math.round(frameSize / 1024 / 1024 * 10) / 10}MB/frame ---');
 		return true;
 		#else
@@ -161,8 +199,7 @@ class VideoEncoder {
 		active = false;
 
 		if (hooked) {
-			var window = FlxG.stage.window;
-			if (window != null) window.onRender.remove(captureFrame);
+			FlxG.signals.postDraw.remove(captureFrame);
 			@:privateAccess FlxG.stage.__forceRender = false;
 
 			if (Main.framerateSprite != null) Main.framerateSprite.visible = framerateWasVisible;
@@ -272,14 +309,14 @@ class VideoEncoder {
 		return false;
 	}
 
-	static function captureFrame(context:lime.graphics.RenderContext):Void {
+	static function captureFrame():Void {
 		if (!active || broken || proc == null) return;
 
 		if (!shapeMatchesPipe()) return;
 
 		if (!VideoRenderer.consumeFrame()) return;
 
-		var gl = context.webgl;
+		var gl = FlxG.stage.window.context.webgl;
 		if (gl == null) return;
 
 		gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
@@ -335,7 +372,10 @@ class VideoEncoder {
 		args = args.concat([
 			"-filter_complex", chains.join(";"),
 			"-map", "0:v:0", "-map", "[aout]",
-			"-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+			// webm can't hold aac - transcode to opus for it, keep aac for mp4/mov
+			"-c:v", "copy",
+			"-c:a", VideoRenderer.settings.codec == 2 ? "libopus" : "aac",
+			"-b:a", "192k",
 			"-shortest", outputPath
 		]);
 
@@ -413,10 +453,11 @@ class VideoEncoder {
 	}
 
 	static function uniquePath(base:String):String {
-		var path = '$outputDir/$base.mp4';
+		var ext = codecExt();
+		var path = '$outputDir/$base.$ext';
 		var n = 2;
 		while (sys.FileSystem.exists(path)) {
-			path = '$outputDir/$base ($n).mp4';
+			path = '$outputDir/$base ($n).$ext';
 			n++;
 		}
 		return path;
