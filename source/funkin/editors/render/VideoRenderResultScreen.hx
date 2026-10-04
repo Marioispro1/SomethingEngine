@@ -78,6 +78,7 @@ class VideoRenderResultScreen extends UISubstateWindow {
 
 		return 'in ${VideoEncoder.outputDir}/\n\n'
 			+ '${result.frames} frames at ${result.fps} fps   -   ${VideoRenderer.formatTime(length * 1000)} long$size\n'
-			+ 'took ${VideoRenderer.formatTime(result.seconds * 1000)}';
+			+ 'took ${VideoRenderer.formatTime(result.seconds * 1000)}'
+			+ (result.gifPath != null ? '\n+ GIF: ${haxe.io.Path.withoutDirectory(result.gifPath)}' : "");
 	}
 }

@@ -434,8 +434,14 @@ class Script extends FlxBasic implements IFlxDestroyable
 	 * @param text Text of the error (ex: Null Object Reference).
 	 * @param additionalInfo Additional information you could provide.
 	 */
+	/**
+	 * Most recent error text per script, so editor UIs can surface them.
+	 */
+	public static var lastErrors:Map<Script, String> = new Map<Script, String>();
+
 	public function error(text:String, ?additionalInfo:Dynamic):Void
 	{
+		lastErrors.set(this, text);
 		var fileName = this.fileName;
 		if (remappedNames.exists(fileName))
 			fileName = remappedNames.get(fileName);

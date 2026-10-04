@@ -5,6 +5,7 @@ import flixel.text.FlxText;
 import flixel.util.FlxColor;
 import funkin.backend.system.console.inspector.ConsoleInspector.InspectorObject;
 import funkin.backend.system.console.inspector.ConsoleInspector.InspectorKeyframe;
+import funkin.backend.system.console.inspector.ConsoleInspector.InspectorTrack;
 
 #if IMGUI_ENABLED
 import lime.tools.imgui.ImGuiFlags;
@@ -34,6 +35,16 @@ class InspectorObjectProperties {
 	var renamePtr = new ImGuiStringPtr("");
 	var fieldFilter = new ImGuiStringPtr("");
 	var bakeSecsPtr = new ImGuiFloatPtr(3);
+
+	/** Pinned object — the window keeps showing it while selection changes. */
+	var pinned:InspectorObject = null;
+
+	/** Timeline strip key being retimed. */
+	var tlDrag:{tr:InspectorTrack, key:InspectorKeyframe, obj:FlxBasic, x0:Float, w:Float, dur:Float} = null;
+
+	/** Curve editor key being dragged. */
+	var cvDrag:{tr:InspectorTrack, key:InspectorKeyframe, obj:FlxBasic, field:String,
+		x0:Float, y0:Float, w:Float, h:Float, dur:Float, lo:Float, hi:Float} = null;
 	var animNewName = new ImGuiStringPtr("newAnim");
 	var animNewPrefix = new ImGuiStringPtr("");
 	var animNewFrames = new ImGuiStringPtr("");
@@ -81,14 +92,20 @@ class InspectorObjectProperties {
 			imageViewerMap.clear();
 		}
 
-		var selectedObject:Dynamic = objectData.obj;
+		if (pinned != null && (pinned.obj == null || pinned.obj.exists == false)) pinned = null;
+		var data = pinned != null ? pinned : objectData;
+		var selectedObject:Dynamic = data.obj;
 
 		var wcond = forceLayout ? ImGuiCond.Always : ImGuiCond.FirstUseEver;
 		forceLayout = false;
 		ImGui.setNextWindowPos(ImGuiUtil.getWindowSpaceX() + Lib.application.window.width - 300, ImGuiUtil.getWindowSpaceY(), wcond);
 		ImGui.setNextWindowSize(300, Lib.application.window.height, wcond);
 		if (ImGui.begin("Object Properties", isOpen)) {
-			ImGui.text(objectData.name + " - " + objectData.type);
+			ImGui.text(data.name + " - " + data.type);
+			ImGui.sameLine();
+			if (ImGui.smallButton(pinned != null ? "Unpin##props" : "Pin##props"))
+				pinned = pinned != null ? null : objectData;
+			if (pinned != null) ImGui.textColored(0xFF00D9FF, "pinned - selection changes won't move this window");
 
 			var basic:FlxBasic = selectedObject is FlxBasic ? cast selectedObject : null;
 			if (basic != null) {
@@ -408,20 +425,71 @@ class InspectorObjectProperties {
 			inspector.bakeMotion(basic, bakeSecsPtr.value);
 		if (ImGui.isItemHovered()) ImGui.setTooltip("record this object's live motion for N seconds into keyframes (replaces the track)");
 
-		// timeline row
+		// timeline strip: drag diamonds to retime, click empty space to scrub the playhead
 		if (tr.keys.length > 0) {
 			inspector.sortTrack(tr);
-			ImGui.text("Keys:");
-			ImGui.sameLine();
-			for (i => k in tr.keys) {
-				ImGui.pushIDFromInt(i);
-				var lbl = 'K${i}@${FlxMath.roundDecimal(k.t, 1)}' + (tr.sel == i ? "*" : "");
-				if (ImGui.smallButton(lbl)) tr.sel = i;
-				if (ImGui.isItemHovered()) ImGui.setTooltip('t=${k.t} pos=${Math.round(k.x)},${Math.round(k.y)} ease=${k.ease}');
-				ImGui.sameLine();
-				ImGui.popID();
+			var dl = ImGui.getWindowDrawList();
+			var stripW = ImGui.getContentRegionAvail().x;
+			var stripH = 26.0;
+			var pos = ImGui.getCursorScreenPos();
+			var dur = Math.max(inspector.trackDuration(tr), 0.001);
+			var beat = funkin.backend.system.Conductor.bpm > 0 ? 60.0 / funkin.backend.system.Conductor.bpm : 0.0;
+			ImGui.dummy(stripW, stripH);
+			dl.addRectFilled([pos.x, pos.y, pos.x + stripW, pos.y + stripH], 0x33000000, 2);
+			if (beat > 0) {
+				var bi = 0.0;
+				while (bi <= dur) {
+					dl.addLineV(pos.x + bi / dur * stripW, pos.y, pos.y + stripH, 0x22FFFFFF, 1);
+					bi += beat;
+				}
 			}
-			ImGui.text("");
+			var midY = pos.y + stripH / 2;
+			for (i in 0...tr.keys.length) {
+				var kx = pos.x + tr.keys[i].t / dur * stripW;
+				var col = i == tr.sel ? 0xFF00D9FF : 0xFFBBBBBB;
+				var r = 4.5;
+				dl.addLine([kx, midY - r, kx + r, midY, kx, midY + r, kx - r, midY, kx, midY - r], col, 1.6);
+			}
+			dl.addLineV(pos.x + tr.t / dur * stripW, pos.y, pos.y + stripH, 0xFF5EC9FF, 1.5);
+			var mx = ImGui.getMousePos().x;
+			if (ImGui.isItemHovered() && ImGui.isMouseClicked(0)) {
+				var best = -1, bd = 8.0;
+				for (i in 0...tr.keys.length) {
+					var d = Math.abs(pos.x + tr.keys[i].t / dur * stripW - mx);
+					if (d < bd) { bd = d; best = i; }
+				}
+				if (best >= 0) {
+					tr.sel = best;
+					tlDrag = {tr: tr, key: tr.keys[best], obj: basic, x0: pos.x, w: stripW, dur: dur};
+				} else {
+					tr.t = FlxMath.bound((mx - pos.x) / stripW * dur, 0, dur);
+					if (tr.patchTrack != null) tr.patchTrack.t = tr.t;
+					if (!tr.playing) inspector.applyTrack(basic, tr);
+				}
+			}
+		}
+		if (tlDrag != null) {
+			if (!ImGui.isMouseDown(0)) {
+				inspector.sortTrack(tlDrag.tr);
+				tlDrag.tr.sel = tlDrag.tr.keys.indexOf(tlDrag.key);
+				inspector.syncPatchTrack(tlDrag.tr);
+				inspector.markEdited(tlDrag.obj);
+				tlDrag = null;
+			} else if (tlDrag.tr == tr) {
+				var nt = FlxMath.bound((ImGui.getMousePos().x - tlDrag.x0) / tlDrag.w * tlDrag.dur, 0, tlDrag.dur);
+				if (ImGui.isKeyDown(ImGuiKey.LeftCtrl) || ImGui.isKeyDown(ImGuiKey.RightCtrl)) {
+					var beat2 = funkin.backend.system.Conductor.bpm > 0 ? 60.0 / funkin.backend.system.Conductor.bpm : 0.0;
+					if (beat2 > 0) nt = Math.fround(nt / beat2) * beat2;
+				}
+				tlDrag.key.t = nt;
+			}
+		}
+
+		if (tr.keys.length > 1 && ImGui.collapsingHeader("Curves##kfc")) {
+			drawChannelCurve(basic, tr, "x");
+			drawChannelCurve(basic, tr, "y");
+			drawChannelCurve(basic, tr, "alpha");
+			drawChannelCurve(basic, tr, "scaleX");
 		}
 
 		// selected keyframe editor
@@ -468,6 +536,70 @@ class InspectorObjectProperties {
 				tr.t = k.t;
 				if (tr.patchTrack != null) tr.patchTrack.t = tr.t;
 				inspector.applyTrack(basic, tr);
+			}
+		}
+	}
+
+	/** One normalized channel strip for the curve editor: polyline + draggable key dots. */
+	function drawChannelCurve(basic:FlxBasic, tr:InspectorTrack, field:String) {
+		var get:InspectorKeyframe->Float = field == "x" ? (k) -> k.x
+			: field == "y" ? (k) -> k.y
+			: field == "alpha" ? (k) -> k.alpha
+			: (k) -> k.scaleX;
+		var set:(InspectorKeyframe, Float)->Void = field == "x" ? (k, v) -> k.x = v
+			: field == "y" ? (k, v) -> k.y = v
+			: field == "alpha" ? (k, v) -> k.alpha = v
+			: (k, v) -> k.scaleX = v;
+		var lo = get(tr.keys[0]), hi = lo;
+		for (k in tr.keys) {
+			var v = get(k);
+			if (v < lo) lo = v;
+			if (v > hi) hi = v;
+		}
+		var pad = (hi - lo) * 0.15 + 0.001;
+		lo -= pad;
+		hi += pad;
+
+		var dl = ImGui.getWindowDrawList();
+		var dur = Math.max(inspector.trackDuration(tr), 0.001);
+		ImGui.text(field + ":");
+		ImGui.sameLine();
+		var pos = ImGui.getCursorScreenPos();
+		var w = ImGui.getContentRegionAvail().x;
+		var h = 40.0;
+		ImGui.dummy(w, h);
+		dl.addRectFilled([pos.x, pos.y, pos.x + w, pos.y + h], 0x22000000, 2);
+		var pts:Array<Float> = [];
+		for (k in tr.keys) {
+			pts.push(pos.x + k.t / dur * w);
+			pts.push(pos.y + h - (get(k) - lo) / (hi - lo) * h);
+		}
+		if (pts.length >= 4) dl.addLine(pts, 0xFF5EC9FF, 1.5);
+		for (i in 0...tr.keys.length) {
+			var kx = pos.x + tr.keys[i].t / dur * w;
+			var ky = pos.y + h - (get(tr.keys[i]) - lo) / (hi - lo) * h;
+			dl.addCircleFilled(kx, ky, i == tr.sel ? 4 : 3, i == tr.sel ? 0xFF00D9FF : 0xFFFFFFFF);
+		}
+		if (cvDrag != null && cvDrag.tr == tr && cvDrag.field == field) {
+			if (!ImGui.isMouseDown(0)) {
+				inspector.markEdited(cvDrag.obj);
+				cvDrag = null;
+			} else {
+				cvDrag.key.t = FlxMath.bound((ImGui.getMousePos().x - cvDrag.x0) / cvDrag.w * cvDrag.dur, 0, cvDrag.dur);
+				set(cvDrag.key, cvDrag.lo + (1 - (ImGui.getMousePos().y - cvDrag.y0) / cvDrag.h) * (cvDrag.hi - cvDrag.lo));
+			}
+		} else if (ImGui.isItemHovered() && ImGui.isMouseClicked(0)) {
+			var best = -1, bd = 10.0;
+			for (i in 0...tr.keys.length) {
+				var kx = pos.x + tr.keys[i].t / dur * w;
+				var ky = pos.y + h - (get(tr.keys[i]) - lo) / (hi - lo) * h;
+				var d = Math.abs(kx - ImGui.getMousePos().x) + Math.abs(ky - ImGui.getMousePos().y);
+				if (d < bd) { bd = d; best = i; }
+			}
+			if (best >= 0) {
+				tr.sel = best;
+				cvDrag = {tr: tr, key: tr.keys[best], obj: basic, field: field,
+					x0: pos.x, y0: pos.y, w: w, h: h, dur: dur, lo: lo, hi: hi};
 			}
 		}
 	}

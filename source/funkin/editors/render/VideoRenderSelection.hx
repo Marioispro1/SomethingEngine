@@ -10,6 +10,8 @@ import funkin.options.type.*;
 using StringTools;
 
 class VideoRenderSelection extends EditorTreeMenu {
+	var queueArmed:Bool = false;
+
 	override function create() {
 		super.create();
 		DiscordUtil.call("onEditorTreeLoaded", ["Video Renderer"]);
@@ -23,6 +25,16 @@ class VideoRenderSelection extends EditorTreeMenu {
 		if (res != null) {
 			VideoEncoder.lastResult = null;
 			openSubState(new VideoRenderResultScreen(res));
+		}
+		queueArmed = VideoRenderSettingsScreen.renderQueue.length > 0;
+	}
+
+	override function update(elapsed:Float) {
+		super.update(elapsed);
+		// continue the render queue once the result screen has been dismissed
+		if (queueArmed && subState == null) {
+			queueArmed = false;
+			VideoRenderSettingsScreen.launchNextQueued();
 		}
 	}
 }

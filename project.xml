@@ -24,6 +24,9 @@
 	<!-- Should it checks for updates? -->
 	<define name="UPDATE_CHECKING" if="desktop" unless="hl || debug || COMPILE_EXPERIMENTAL || TEST_BUILD"/>
 
+	<!-- flixel input recording/replay (recordInputs/playInputs console commands, video renderer "recorded inputs" option) -->
+	<define name="FLX_RECORD"/>
+
 	<section if="cpp">
 		<!-- Compile With Discord Rich Presence -->
 		<!-- TODO: Update Discord RPC Library & Rewrite DiscordUtil -->

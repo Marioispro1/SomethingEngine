@@ -9,6 +9,8 @@ typedef VideoRenderResult = {
 
 	var seconds:Float;
 
+	var gifPath:String;
+
 	var error:String;
 }
 
@@ -183,24 +185,58 @@ class VideoEncoder {
 		if (logTail.length > 0) log('ffmpeg said: ${logTail.join(" | ")}', code == 0 ? INFO : WARNING);
 
 		var savedPath:String = null;
+		var gifPath:String = null;
 		if (framesWritten == 0) {
 			fail("no frames reached the encoder");
 			remove(silentPath);
 		}
 		else if (code != 0)
 			fail('ffmpeg exited with code $code: ${logTail.join(" | ")}');
-		else
+		else {
 			savedPath = mux(audioAssets, audioSeekMs, audioDelayMs);
+			if (savedPath != null && VideoRenderer.settings.gif)
+				gifPath = makeGif(savedPath);
+		}
 
 		lastResult = {
 			path: savedPath,
 			frames: framesWritten,
 			fps: outputFps,
 			seconds: startedStamp > 0 ? haxe.Timer.stamp() - startedStamp : 0,
+			gifPath: gifPath,
 			error: lastError
 		};
 		#end
 	}
+
+	#if sys
+	/** Two-pass palette GIF from the finished mp4; returns the gif path or null on failure. */
+	static function makeGif(videoPath:String):Null<String> {
+		var gifPath = videoPath.substr(0, videoPath.length - 4) + ".gif";
+		var palPath = videoPath + ".pal.png";
+		try {
+			var p1 = new sys.io.Process("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error", "-i", videoPath, "-vf", "palettegen", palPath]);
+			var c1 = p1.exitCode();
+			p1.close();
+			if (c1 != 0) { remove(palPath); log('palettegen failed ($c1)', WARNING); return null; }
+			var p2 = new sys.io.Process("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error", "-i", videoPath, "-i", palPath,
+				"-lavfi", 'fps=15,scale=trunc(iw/4)*2:-1:flags=lanczos[x];[x][1:v]paletteuse', gifPath]);
+			var c2 = p2.exitCode();
+			p2.close();
+			remove(palPath);
+			if (c2 == 0 && sys.FileSystem.exists(gifPath)) {
+				log('GIF: $gifPath');
+				return gifPath;
+			}
+			log('gif encode failed ($c2)', WARNING);
+		}
+		catch (e:Dynamic) {
+			remove(palPath);
+			log('gif encode failed: $e', WARNING);
+		}
+		return null;
+	}
+	#end
 
 	#if sys
 	static function shapeMatchesPipe():Bool {
@@ -397,7 +433,7 @@ class VideoEncoder {
 
 	static function startFailed(message:String):Bool {
 		broken = true;
-		lastResult = {path: null, frames: 0, fps: outputFps, seconds: 0, error: message};
+		lastResult = {path: null, frames: 0, fps: outputFps, seconds: 0, gifPath: null, error: message};
 		return fail(message);
 	}
 

@@ -147,6 +147,48 @@ class BuiltInCommands {
 		}
 	});
 
+	static var recordInputs = new FuncCommand("recordInputs", "", "(restarts the state and records all inputs; stop with stopInputs)", function(args) {
+		#if FLX_RECORD
+		FlxG.vcr.startRecording(true);
+		Logs.trace("Recording inputs - play through what you want to capture, then run stopInputs");
+		#else
+		Logs.error("Input recording requires the FLX_RECORD define.");
+		#end
+	});
+	static var stopInputs = new FuncCommand("stopInputs", "[file]", "(stops input recording and saves it, default exports/replay.fgr)", function(args) {
+		#if (FLX_RECORD && sys)
+		var path = args[0] != null && args[0] != "" ? args[0] : "exports/replay.fgr";
+		var data = FlxG.vcr.stopRecording(false);
+		if (data == null) {
+			Logs.error("Not currently recording.");
+			return;
+		}
+		try {
+			var dir = haxe.io.Path.directory(path);
+			if (dir != "" && !sys.FileSystem.exists(dir)) sys.FileSystem.createDirectory(dir);
+			sys.io.File.saveContent(path, data);
+			Logs.trace('Saved input recording to $path');
+		} catch(e) Logs.error('Could not save recording: $e');
+		#else
+		Logs.error("Input recording requires the FLX_RECORD define.");
+		#end
+	});
+	static var playInputs = new FuncCommand("playInputs", "[file]", "(replays a recorded input file in the current state, default exports/replay.fgr)", function(args) {
+		#if (FLX_RECORD && sys)
+		var path = args[0] != null && args[0] != "" ? args[0] : "exports/replay.fgr";
+		if (!sys.FileSystem.exists(path)) {
+			Logs.error('No recording at $path - use recordInputs + stopInputs first.');
+			return;
+		}
+		try {
+			FlxG.vcr.loadReplay(sys.io.File.getContent(path));
+			Logs.trace('Playing inputs from $path');
+		} catch(e) Logs.error('Could not play recording: $e');
+		#else
+		Logs.error("Input recording requires the FLX_RECORD define.");
+		#end
+	});
+
 	static var goToCharter = new FuncCommand("goToCharter", "[song] [diff] [variation]", "(opens chart editor, inputting nothing will load existing song)", function(args) {
 		if (args.length == 0) {
 			if (PlayState.SONG == null) {

@@ -18,6 +18,8 @@ typedef VideoRenderSettings = {
 	var width:Int;
 
 	var height:Int;
+
+	var gif:Bool;
 }
 
 typedef RenderResolution = {
@@ -33,12 +35,15 @@ class VideoRenderer {
 		return {
 			fps: 60, startMs: 0, endMs: 0,
 			includeCountdown: true, botplay: true, uncapped: true, encode: true,
-			width: 0, height: 0
+			width: 0, height: 0, gif: false
 		};
 
 	static inline var maxLoopRate:Int = 1000;
 
 	public static var requested:Bool = false;
+
+	/** .fgr replay data consumed by PlayState on next create; set when rendering a recorded run. */
+	public static var replayPending:String = null;
 
 	public static var active(default, null):Bool = false;
 

@@ -155,6 +155,8 @@ class HScript extends Script {
 			if (err.startsWith(fn)) err = err.substr(fn.length);
 		}
 
+		Script.lastErrors.set(this, '$fileName:${error.line}: $err');
+
 		Logs.traceColored([
 			Logs.logText(fn, GREEN),
 			Logs.logText(err, RED)

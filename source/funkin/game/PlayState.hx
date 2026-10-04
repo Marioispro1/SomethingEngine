@@ -959,6 +959,18 @@ class PlayState extends MusicBeatState
 	}
 
 	@:dox(hide) public override function createPost() {
+		#if (FLX_RECORD && sys)
+		// a render requested recorded inputs: restart this state under replay control once
+		if (VideoRenderer.requested && VideoRenderer.replayPending != null) {
+			var data = VideoRenderer.replayPending;
+			VideoRenderer.replayPending = null;
+			try {
+				FlxG.vcr.loadReplay(data, () -> new PlayState());
+				return;
+			}
+			catch (e:Dynamic) Logs.error('Could not load recorded inputs: $e');
+		}
+		#end
 		startCutscene("", cutscene, null, true);
 		super.createPost();
 

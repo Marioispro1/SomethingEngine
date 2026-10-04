@@ -1,4 +1,4 @@
-package funkin.backend.system.console.inspector;
+﻿package funkin.backend.system.console.inspector;
 
 //WIP
 
@@ -67,6 +67,7 @@ class ConsoleInspector {
 		this.hscript = hscript;
 		#if IMGUI_ENABLED
 		objectProperties.inspector = this;
+		loadSettings();
 		#end
 	}
 
@@ -161,6 +162,10 @@ class ConsoleInspector {
 	/** Song scrub slider (PlayState only). */
 	var songScrubPtr = new ImGuiFloatPtr(0);
 
+	/** Camera manager drag ptrs. */
+	var camZoomPtr = new ImGuiFloatPtr(1);
+	var camScrollPtr = new ImGuiFloat2Ptr(0, 0);
+
 	/** Motion bake state: records an object's live pose into a key track. */
 	public var baking:{obj:FlxBasic, keys:Array<InspectorKeyframe>, t:Float, nextT:Float, dur:Float} = null;
 	static inline var BAKE_STEP:Float = 0.05;
@@ -182,6 +187,23 @@ class ConsoleInspector {
 	var previewWaveDur:Float = 0;
 	var previewWavePath:String = null;
 	var previewStatus:String = "";
+
+	/** Shift+drag rubber-band marquee selection (screen coords). */
+	var marquee:{x0:Float, y0:Float} = null;
+
+	/** Last persisted editor settings, so we only write on change. */
+	var savedGizmoMode:Int = -1;
+	var savedClickSelect:Bool = true;
+	var savedKeyOverlay:Bool = true;
+
+	/** Asset browser window state. */
+	var assetBrowserOpen = new ImGuiBoolPtr(false);
+	var assetBrowserList:Array<String> = null;
+	var assetBrowserFilter = new ImGuiStringPtr("");
+	var assetBrowserSel:String = null;
+	var assetBrowserBmd:openfl.display.BitmapData = null;
+	var assetBrowserStatus:String = "";
+	var assetClickPlace:Bool = false;
 
 	/** Force window pos/size for one frame (clears stale docking positions). */
 	public var forceLayout:Bool = false;
@@ -350,6 +372,8 @@ class ConsoleInspector {
 			if (ImGui.beginMenu("View")) {
 				if (ImGui.menuItem("Object Properties")) objectProperties.isOpen.value = true;
 				if (ImGui.menuItem("Sound Preview", null, soundPreviewOpen.value)) soundPreviewOpen.value = !soundPreviewOpen.value;
+				if (ImGui.menuItem("Asset Browser", null, assetBrowserOpen.value)) assetBrowserOpen.value = !assetBrowserOpen.value;
+				if (ImGui.menuItem("Screenshot to exports/")) takeScreenshot();
 				if (ImGui.menuItem("Reset Layout")) {
 					forceLayout = true;
 					objectProperties.isOpen.value = true;
@@ -441,6 +465,31 @@ class ConsoleInspector {
 				ImGui.popID();
 			}
 			if (toRemove != -1) patchSnippets.splice(toRemove, 1);
+		}
+
+		// most recent runtime/parse error per loaded script
+		var errCount = 0;
+		var packs:Array<ScriptPack> = [];
+		if (FlxG.state is MusicBeatState)
+			packs.push((cast FlxG.state : MusicBeatState).stateScripts);
+		for (pack in packs) {
+			if (pack == null) continue;
+			for (s in pack.scripts)
+				if (Script.lastErrors.exists(s)) errCount++;
+		}
+		if (errCount > 0 && ImGui.collapsingHeader('Script errors ($errCount)##errs')) {
+			for (pack in packs) {
+				if (pack == null) continue;
+				for (s in pack.scripts) {
+					var err = Script.lastErrors.get(s);
+					if (err == null) continue;
+					ImGui.textColored(0xFFFF6666, '${s.fileName}:');
+					ImGui.indent();
+					ImGui.textWrapped(err);
+					if (ImGui.smallButton('clear##err${s.fileName}')) Script.lastErrors.remove(s);
+					ImGui.unindent();
+				}
+			}
 		}
 	}
 
@@ -644,6 +693,34 @@ class ConsoleInspector {
 						}
 					}
 
+					if (ImGui.collapsingHeader("Cameras##cams")) {
+						if (ImGui.smallButton("New Camera##cams")) {
+							var c = new FlxCamera(0, 0, FlxG.width, FlxG.height);
+							FlxG.cameras.add(c, false);
+							runStatus = 'Camera ${FlxG.cameras.list.indexOf(c)} created';
+						}
+						var i = 0;
+						var deadCam:FlxCamera = null;
+						for (cam in FlxG.cameras.list) {
+							ImGui.pushIDFromStr('cam$i');
+							ImGui.text('$i');
+							ImGui.sameLine();
+							ImGui.setNextItemWidth(90);
+							camZoomPtr.value = cam.zoom;
+							if (ImGui.dragFloat("zoom", camZoomPtr, 0.01, 0.05, 50)) cam.zoom = camZoomPtr.value;
+							ImGui.sameLine();
+							ImGui.setNextItemWidth(150);
+							camScrollPtr.values[0] = cam.scroll.x;
+							camScrollPtr.values[1] = cam.scroll.y;
+							if (ImGui.dragFloat2("scroll", camScrollPtr, 1)) cam.scroll.set(camScrollPtr.values[0], camScrollPtr.values[1]);
+							ImGui.sameLine();
+							if (ImGui.smallButton("x") && FlxG.cameras.list.length > 1) deadCam = cam;
+							ImGui.popID();
+							i++;
+						}
+						if (deadCam != null) FlxG.cameras.remove(deadCam);
+					}
+
 					if (FlxG.state is funkin.game.PlayState && ImGui.collapsingHeader("Song##scrub")) {
 						var ps:funkin.game.PlayState = cast FlxG.state;
 						if (ps.inst != null && ps.inst.length > 0) {
@@ -734,6 +811,15 @@ class ConsoleInspector {
 
 		drawTextEdit();
 		drawSoundPreview();
+		drawAssetBrowser();
+		if (marquee != null) {
+			var mp = ImGui.getMousePos();
+			var dl = ImGui.getBackgroundDrawList(ImGui.getMainViewport());
+			var x0 = Math.min(marquee.x0, mp.x), y0 = Math.min(marquee.y0, mp.y);
+			var x1 = Math.max(marquee.x0, mp.x), y1 = Math.max(marquee.y0, mp.y);
+			dl.addRectFilled([x0, y0, x1, y1], 0x33FFFFFF);
+			dl.addRect([x0, y0, x1, y1], 0xFFFFFFFF, 0, 1.5);
+		}
 		drawKeyframeOverlays();
 		tickUndo(FlxG.elapsed);
 		tickKeyTracks(FlxG.elapsed);
@@ -912,6 +998,224 @@ class ConsoleInspector {
 			previewSound.destroy();
 			previewSound = null;
 		}
+	}
+
+	// ============ SETTINGS PERSISTENCE ============
+
+	function loadSettings() {
+		try {
+			var d:Dynamic = FlxG.save.data.sneEditor;
+			if (d != null) {
+				if (d.gizmoMode != null) gizmo.gizmoMode = d.gizmoMode;
+				if (d.clickSelect != null) { clickSelect = d.clickSelect; clickSelectPtr.value = d.clickSelect; }
+				if (d.showKeyOverlay != null) { showKeyOverlay = d.showKeyOverlay; showKeyOverlayPtr.value = d.showKeyOverlay; }
+			}
+		} catch(e) {}
+		savedGizmoMode = gizmo.gizmoMode;
+		savedClickSelect = clickSelect;
+		savedKeyOverlay = showKeyOverlay;
+	}
+
+	/** Writes editor settings to FlxG.save when any tracked value changed since last write. */
+	function persistSettings() {
+		if (gizmo.gizmoMode == savedGizmoMode && clickSelect == savedClickSelect && showKeyOverlay == savedKeyOverlay) return;
+		savedGizmoMode = gizmo.gizmoMode;
+		savedClickSelect = clickSelect;
+		savedKeyOverlay = showKeyOverlay;
+		try {
+			FlxG.save.data.sneEditor = {gizmoMode: gizmo.gizmoMode, clickSelect: clickSelect, showKeyOverlay: showKeyOverlay};
+			FlxG.save.flush();
+		} catch(e) {}
+	}
+
+	// ============ FOCUS / SCREENSHOT ============
+
+	/** Scrolls the object's camera so the selected object ends up centered on screen. */
+	function focusSelected() {
+		var o:FlxObject = selectedObject is FlxObject ? cast selectedObject : null;
+		if (o == null) return;
+		var cam = o.getDefaultCamera();
+		if (cam == null) return;
+		cam.scroll.set(
+			o.x + o.width / 2 - (cam.width / cam.zoom) / 2,
+			o.y + o.height / 2 - (cam.height / cam.zoom) / 2);
+		runStatus = "Focused camera on selection";
+	}
+
+	/** Grabs the next rendered frame and writes it to exports/screenshot-N.png. */
+	function takeScreenshot() {
+		#if sys
+		var win = FlxG.stage.window;
+		if (win == null) { runStatus = "No window"; return; }
+		var cb;
+		cb = function(ctx:lime.graphics.RenderContext) {
+			win.onRender.remove(cb);
+			var gl = ctx.webgl;
+			if (gl == null) { runStatus = "No GL context for screenshot"; return; }
+			var w = Std.int(win.width * win.scale);
+			var h = Std.int(win.height * win.scale);
+			if (w <= 0 || h <= 0) { runStatus = "Window has no size"; return; }
+			try {
+				var pixels = new lime.utils.UInt8Array(w * h * 4);
+				gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+				var out = new lime.utils.UInt8Array(w * h * 4);
+				var row = w * 4;
+				for (y in 0...h) {
+					var dst = (h - 1 - y) * row;
+					var src = y * row;
+					for (i in 0...row) out[dst + i] = pixels[src + i];
+				}
+				var buf = new lime.graphics.ImageBuffer(out, w, h, 32, lime.graphics.PixelFormat.RGBA32);
+				buf.premultiplied = false;
+				var img = new lime.graphics.Image(buf);
+				var png = img.encode(lime.graphics.ImageFileFormat.PNG);
+				var dir = "exports";
+				if (!sys.FileSystem.exists(dir)) sys.FileSystem.createDirectory(dir);
+				var n = 1;
+				while (sys.FileSystem.exists('$dir/screenshot-$n.png')) n++;
+				var path = '$dir/screenshot-$n.png';
+				sys.io.File.saveBytes(path, png);
+				runStatus = 'Saved $path';
+			} catch(e) runStatus = 'Screenshot failed: $e';
+		}
+		win.onRender.add(cb, false, -10000);
+		runStatus = "Capturing frame...";
+		#end
+	}
+
+	// ============ MARQUEE ============
+
+	/** Walks every visible FlxObject in the picked layer (or all layers). */
+	function forEachSceneFlxObject(f:FlxObject->Void) {
+		var states:Array<FlxState> = [];
+		var st:FlxState = FlxG.state;
+		while (st != null) { states.push(st); st = st.subState; }
+		var li = stateLayerPtr.value - 1;
+		if (li >= 0) states = li < states.length ? [states[li]] : [];
+		for (s in states) {
+			var all:Array<FlxBasic> = [];
+			collectScene(cast s, all);
+			for (m in all) if (m is FlxObject && m.visible && m.exists) f(cast m);
+		}
+	}
+
+	/** Screen-space bounds of an object's rendered quad (transform-aware for sprites). */
+	function objectScreenRect(o:FlxObject):{x0:Float, y0:Float, x1:Float, y1:Float} {
+		var cam = o.getDefaultCamera();
+		var sf = scrollFactorFor(o);
+		var sprite:FlxSprite = o is FlxSprite ? cast o : null;
+		var corners:Array<FlxPoint> = [];
+		if (sprite != null && sprite.frame != null) {
+			@:privateAccess var mat = sprite._matrix;
+			for (c in [
+				FlxPoint.get(0, 0), FlxPoint.get(sprite.frame.frame.width, 0),
+				FlxPoint.get(sprite.frame.frame.width, sprite.frame.frame.height), FlxPoint.get(0, sprite.frame.frame.height)
+			]) {
+				c.transform(mat);
+				corners.push(gizmo.toScreenPoint(c, cam, sf));
+			}
+		} else {
+			for (c in [
+				FlxPoint.get(o.x, o.y), FlxPoint.get(o.x + o.width, o.y),
+				FlxPoint.get(o.x + o.width, o.y + o.height), FlxPoint.get(o.x, o.y + o.height)
+			]) corners.push(gizmo.toScreenPoint(c, cam, sf));
+		}
+		if (corners.length == 0) return null;
+		var x0 = corners[0].x, y0 = corners[0].y, x1 = x0, y1 = y0;
+		for (p in corners) {
+			if (p.x < x0) x0 = p.x; if (p.y < y0) y0 = p.y;
+			if (p.x > x1) x1 = p.x; if (p.y > y1) y1 = p.y;
+		}
+		for (p in corners) p.put();
+		return {x0: x0, y0: y0, x1: x1, y1: y1};
+	}
+
+	// ============ ASSET BROWSER ============
+
+	function drawAssetBrowser() {
+		#if sys
+		if (!assetBrowserOpen.value) return;
+		if (assetBrowserList == null) {
+			assetBrowserList = [];
+			try {
+				var base = Paths.assetsTree.getSpecificPath('assets/images');
+				if (base != null && sys.FileSystem.isDirectory(base))
+					walkImages(base, 'assets/images', assetBrowserList);
+			} catch(e) assetBrowserStatus = 'listing failed: $e';
+		}
+		ImGui.setNextWindowSize(360, 440, ImGuiCond.FirstUseEver);
+		if (ImGui.begin("Asset Browser##ab", assetBrowserOpen)) {
+			ImGui.setNextItemWidth(-1);
+			ImGui.inputTextWithHint("##abFilter", "filter...", assetBrowserFilter);
+			var filter = StringTools.trim(assetBrowserFilter.value).toLowerCase();
+			if (ImGui.beginChild("##abList", 0, 240)) {
+				for (path in assetBrowserList) {
+					var id = path.substr('assets/images/'.length);
+					if (filter != "" && id.toLowerCase().indexOf(filter) == -1) continue;
+					if (ImGui.selectable(id, assetBrowserSel == path)) {
+						if (assetBrowserSel != path) {
+							assetBrowserSel = path;
+							assetBrowserBmd = null;
+							try assetBrowserBmd = Assets.getBitmapData(path)
+							catch(e) assetBrowserStatus = 'load failed: $e';
+						}
+					}
+				}
+			}
+			ImGui.endChild();
+			if (assetBrowserBmd != null) {
+				var maxW = 320.0, maxH = 120.0;
+				var sc = Math.min(maxW / assetBrowserBmd.width, maxH / assetBrowserBmd.height);
+				if (sc > 1.5) sc = 1.5;
+				ImGui.image(ImTextureID.fromBitmapData(assetBrowserBmd), assetBrowserBmd.width * sc, assetBrowserBmd.height * sc);
+			}
+			if (assetBrowserSel != null) {
+				if (ImGui.button("Add to scene##ab")) spawnBrowserAsset(null);
+				ImGui.sameLine();
+				if (ImGui.button("Click to place##ab")) {
+					assetClickPlace = true;
+					runStatus = "Click in the scene to place " + assetBrowserSel;
+				}
+			}
+			if (assetBrowserStatus != "") ImGui.textWrapped(assetBrowserStatus);
+		}
+		ImGui.end();
+		#end
+	}
+
+	function walkImages(dir:String, prefix:String, out:Array<String>) {
+		for (f in sys.FileSystem.readDirectory(dir)) {
+			var p = dir + '/' + f;
+			if (sys.FileSystem.isDirectory(p)) walkImages(p, prefix + '/' + f, out);
+			else {
+				var lower = f.toLowerCase();
+				if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg')) out.push(prefix + '/' + f);
+			}
+		}
+	}
+
+	/** Spawns the browser-selected image as a sprite at the camera center (or where clicked). */
+	function spawnBrowserAsset(?wp:FlxPoint) {
+		var path = assetBrowserSel;
+		if (path == null || !Assets.exists(path)) { runStatus = "No asset selected"; return; }
+		var parent = getEditParent();
+		var varName = '__editor_${++editorCounter}';
+		var cam = FlxG.camera;
+		var nx = wp != null ? wp.x : (cam != null ? cam.scroll.x + FlxG.width / cam.zoom / 2 - 40 : 100);
+		var ny = wp != null ? wp.y : (cam != null ? cam.scroll.y + FlxG.height / cam.zoom / 2 - 40 : 100);
+		var s = new FlxSprite(nx, ny);
+		s.loadGraphic(path);
+		parent.add(s);
+		editorNames.set(s, varName);
+		var short = shortImageKey(path);
+		addedObjects.push({
+			obj: s, varName: varName, typeName: "flixel.FlxSprite",
+			createCode: 'new flixel.FlxSprite($nx, $ny, ' + (short != null ? 'Paths.image("${escapeHaxe(short)}")' : '"${escapeHaxe(path)}"') + ')',
+			parent: parent
+		});
+		selectObject(s);
+		markEdited(s);
+		runStatus = 'Added ${path.substr(14)}';
 	}
 
 	function checkForSelectedObjectThisFrame(object:InspectorObject) {
@@ -1860,7 +2164,9 @@ class ConsoleInspector {
 				if (sel.length > 1) for (o in sel) deleteInspectorObject(o);
 				else deleteInspectorObject(cast selectedObject);
 			}
+			else if (ImGui.isKeyPressed(ImGuiKey.F)) focusSelected();
 		}
+		persistSettings();
 	}
 
 	function tickKeyTracks(elapsed:Float) {
@@ -1898,37 +2204,67 @@ class ConsoleInspector {
 			}
 		}
 
-		if (clickSelect && clickCaptureFor == null && !keyMouseConsumed && keyDrag == null && sceneDrag == null
-			&& ImGui.isMouseClicked(0) && !ImGuiIO.wantCaptureMouse
+		// marquee: shift+drag draws a rubber band; releasing selects everything inside
+		if (marquee != null) {
+			if (!ImGui.isMouseDown(0)) {
+				var mp = ImGui.getMousePos();
+				var x0 = Math.min(marquee.x0, mp.x), y0 = Math.min(marquee.y0, mp.y);
+				var x1 = Math.max(marquee.x0, mp.x), y1 = Math.max(marquee.y0, mp.y);
+				selectedObjects.resize(0);
+				forEachSceneFlxObject(function(o) {
+					var r = objectScreenRect(o);
+					if (r != null && r.x1 >= x0 && r.x0 <= x1 && r.y1 >= y0 && r.y0 <= y1)
+						selectObject(o, true);
+				});
+				marquee = null;
+				keyMouseConsumed = true;
+			}
+		}
+		var shiftDown = ImGui.isKeyDown(ImGuiKey.LeftShift) || ImGui.isKeyDown(ImGuiKey.RightShift);
+		if (marquee == null && clickSelect && shiftDown && ImGui.isMouseClicked(0) && !ImGuiIO.wantCaptureMouse) {
+			var mp = ImGui.getMousePos();
+			marquee = {x0: mp.x, y0: mp.y};
+		}
+
+		if (clickSelect && clickCaptureFor == null && !keyMouseConsumed && keyDrag == null && sceneDrag == null && marquee == null
+			&& ImGui.isMouseClicked(0) && !ImGuiIO.wantCaptureMouse && !shiftDown
 			&& !gizmo.positionActive && !gizmo.rotationActive && !gizmo.scaleActive) {
-			var pick = pickSceneObject();
-			if (pick != null) {
-				selectObject(pick, ImGui.isKeyDown(ImGuiKey.LeftCtrl) || ImGui.isKeyDown(ImGuiKey.RightCtrl));
-				if (pick is FlxText && ImGui.isMouseDoubleClicked(0)) {
-					sceneDrag = null;
-					textEditTarget = cast pick;
-					if (textEditPtr == null) textEditPtr = new ImGuiStringPtr("");
-					textEditPtr.value = textEditTarget.text;
-					textEditDirty = false;
-					textEditJustOpened = true;
-					textEditOpen.value = true;
-					var mp = ImGui.getMousePos();
-					textEditX = mp.x;
-					textEditY = mp.y;
-				} else if (pick is FlxObject) {
-					var o:FlxObject = cast pick;
-					var data = findInspectorObjectFor(pick);
-					var cam = data != null ? gizmo.prepareObjectCamera(data, pick) : FlxG.camera;
-					var mp = ImGui.getMousePos();
-					var wp = gizmo.screenToWorldPoint(FlxPoint.get(mp.x, mp.y), cam, scrollFactorFor(pick));
-					// dragging a member of a multi-selection moves the whole selection
-					var others:Array<{o:FlxObject, dx:Float, dy:Float}> = [];
-					if (selectedObjects.contains(pick))
-						for (m in selectionList())
-							if (m != pick && m is FlxObject)
-								others.push({o: cast m, dx: (cast m : FlxObject).x - o.x, dy: (cast m : FlxObject).y - o.y});
-					sceneDrag = {obj: o, cam: cam, offX: o.x - wp.x, offY: o.y - wp.y, moved: false, others: others};
-					wp.put();
+			if (assetClickPlace) {
+				assetClickPlace = false;
+				var mp = ImGui.getMousePos();
+				var wp = gizmo.screenToWorldPoint(FlxPoint.get(mp.x, mp.y), FlxG.camera, null);
+				spawnBrowserAsset(wp);
+				wp.put();
+			} else {
+				var pick = pickSceneObject();
+				if (pick != null) {
+					selectObject(pick, ImGui.isKeyDown(ImGuiKey.LeftCtrl) || ImGui.isKeyDown(ImGuiKey.RightCtrl));
+					if (pick is FlxText && ImGui.isMouseDoubleClicked(0)) {
+						sceneDrag = null;
+						textEditTarget = cast pick;
+						if (textEditPtr == null) textEditPtr = new ImGuiStringPtr("");
+						textEditPtr.value = textEditTarget.text;
+						textEditDirty = false;
+						textEditJustOpened = true;
+						textEditOpen.value = true;
+						var mp = ImGui.getMousePos();
+						textEditX = mp.x;
+						textEditY = mp.y;
+					} else if (pick is FlxObject) {
+						var o:FlxObject = cast pick;
+						var data = findInspectorObjectFor(pick);
+						var cam = data != null ? gizmo.prepareObjectCamera(data, pick) : FlxG.camera;
+						var mp = ImGui.getMousePos();
+						var wp = gizmo.screenToWorldPoint(FlxPoint.get(mp.x, mp.y), cam, scrollFactorFor(pick));
+						// dragging a member of a multi-selection moves the whole selection
+						var others:Array<{o:FlxObject, dx:Float, dy:Float}> = [];
+						if (selectedObjects.contains(pick))
+							for (m in selectionList())
+								if (m != pick && m is FlxObject)
+									others.push({o: cast m, dx: (cast m : FlxObject).x - o.x, dy: (cast m : FlxObject).y - o.y});
+						sceneDrag = {obj: o, cam: cam, offX: o.x - wp.x, offY: o.y - wp.y, moved: false, others: others};
+						wp.put();
+					}
 				}
 			}
 		}
@@ -2578,6 +2914,13 @@ class ConsoleInspector {
 				content = insertScriptCall(content, 'postCreate', '__sneEditorPatch();', '');
 				content = insertScriptCall(content, 'update', '__sneEditorUpdate(elapsed);', 'elapsed');
 			}
+		}
+		// don't write a patch that can't be re-parsed on next state load
+		try Script.fromString(content, path)
+		catch (e:Dynamic) {
+			saveStatus = 'Generated patch did not parse, not written: $e';
+			Logs.error('State Editor: generated patch failed to parse: $e');
+			return;
 		}
 		sys.io.File.saveContent(path, content);
 	}

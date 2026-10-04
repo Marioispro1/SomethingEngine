@@ -5,7 +5,24 @@ import funkin.backend.system.VideoEncoder;
 import funkin.backend.system.VideoRenderer;
 import funkin.backend.system.VideoRenderer.RenderResolution;
 
+typedef QueuedRender = {
+	var song:String;
+	var diff:String;
+	var variant:String;
+	var fps:Float;
+	var startMs:Float;
+	var endMs:Float;
+	var countdown:Bool;
+	var botplay:Bool;
+	var uncapped:Bool;
+	var width:Int;
+	var height:Int;
+	var gif:Bool;
+	var useReplay:Bool;
+};
+
 class VideoRenderSettingsScreen extends UISubstateWindow {
+	public static var renderQueue:Array<QueuedRender> = [];
 	public var songName:String;
 	public var difficulty:String;
 	public var variant:String;
@@ -17,6 +34,9 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 	var countdownCheckbox:UICheckbox;
 	var botplayCheckbox:UICheckbox;
 	var uncappedCheckbox:UICheckbox;
+	var gifCheckbox:UICheckbox;
+	var replayCheckbox:UICheckbox;
+	var queueText:UIText;
 	var problemText:UIText;
 	var outputText:UIText;
 	var renderButton:UIButton;
@@ -35,7 +55,7 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 	public override function create() {
 		winTitle = t("title");
 		winWidth = 620;
-		winHeight = 540;
+		winHeight = 600;
 
 		super.create();
 
@@ -92,6 +112,12 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 		colY += 28;
 		uncappedCheckbox = new UICheckbox(left, colY, t("uncapped"), s.uncapped, 0, true);
 		add(uncappedCheckbox);
+		gifCheckbox = new UICheckbox(left + 290, colY, "Also export GIF", false, 0, true);
+		add(gifCheckbox);
+
+		colY += 28;
+		replayCheckbox = new UICheckbox(left, colY, "Use recorded inputs (exports/replay.fgr)", false, 0, true);
+		add(replayCheckbox);
 
 		colY += 34;
 		var explainer = new UIText(left, colY, windowSpr.bWidth - 48, t("explainer"), 13, 0xFFBBBBBB);
@@ -111,6 +137,72 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 
 		renderButton = new UIButton(closeButton.x - 20 - 140, closeButton.y, t("render"), startRender, 140);
 		add(renderButton);
+
+		var queueButton = new UIButton(renderButton.x - 12 - 140, closeButton.y, "Queue", queueCurrent, 140);
+		add(queueButton);
+		queueText = new UIText(left, closeButton.y + 6, 300,
+			renderQueue.length > 0 ? '${renderQueue.length} render(s) queued - starts after this one' : "", 13, 0xFFAAAAAA);
+		add(queueText);
+	}
+
+	function captureConfig():QueuedRender {
+		var res:RenderResolution = cast resDropDown.value;
+		return {
+			song: songName, diff: difficulty, variant: variant,
+			fps: fpsStepper.value,
+			startMs: startStepper.value * 1000,
+			endMs: endStepper.value * 1000,
+			countdown: countdownCheckbox.checked,
+			botplay: botplayCheckbox.checked,
+			uncapped: uncappedCheckbox.checked,
+			width: res != null ? res.width : 0,
+			height: res != null ? res.height : 0,
+			gif: gifCheckbox.checked,
+			useReplay: replayCheckbox.checked
+		};
+	}
+
+	function queueCurrent() {
+		UIUtil.confirmUISelections(this);
+		renderQueue.push(captureConfig());
+		queueText.text = '${renderQueue.length} render(s) queued - starts after this one';
+	}
+
+	/** Starts a queued render: applies its settings, optionally loads the recorded inputs, then plays the song. */
+	public static function launch(item:QueuedRender) {
+		var s = VideoRenderer.settings;
+		s.fps = item.fps;
+		s.startMs = item.startMs;
+		s.endMs = item.endMs;
+		s.includeCountdown = item.countdown;
+		s.botplay = item.botplay;
+		s.uncapped = item.uncapped;
+		s.encode = VideoEncoder.available();
+		s.width = item.width;
+		s.height = item.height;
+		s.gif = item.gif;
+		VideoRenderer.applyOutputSize();
+
+		VideoRenderer.replayPending = null;
+		#if (sys && FLX_RECORD)
+		if (item.useReplay) {
+			try {
+				var p = 'exports/replay.fgr';
+				if (sys.FileSystem.exists(p)) VideoRenderer.replayPending = sys.io.File.getContent(p);
+			}
+			catch (e:Dynamic) Logs.error('Could not read replay file: $e');
+		}
+		#end
+
+		VideoRenderer.requested = true;
+		PlayState.loadSong(item.song, item.diff, item.variant);
+		MusicBeatState.skipTransIn = MusicBeatState.skipTransOut = true;
+		FlxG.switchState(new PlayState());
+	}
+
+	public static function launchNextQueued() {
+		var item = renderQueue.shift();
+		if (item != null) launch(item);
 	}
 
 	public override function update(elapsed:Float) {
@@ -128,24 +220,6 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 
 	function startRender() {
 		UIUtil.confirmUISelections(this);
-
-		var s = VideoRenderer.settings;
-		s.fps = fpsStepper.value;
-		s.startMs = startStepper.value * 1000;
-		s.endMs = endStepper.value * 1000;
-		s.includeCountdown = countdownCheckbox.checked;
-		s.botplay = botplayCheckbox.checked;
-		s.uncapped = uncappedCheckbox.checked;
-		s.encode = VideoEncoder.available();
-
-		var res:RenderResolution = cast resDropDown.value;
-		s.width = res != null ? res.width : 0;
-		s.height = res != null ? res.height : 0;
-		VideoRenderer.applyOutputSize();
-
-		VideoRenderer.requested = true;
-		PlayState.loadSong(songName, difficulty, variant);
-		MusicBeatState.skipTransIn = MusicBeatState.skipTransOut = true;
-		FlxG.switchState(new PlayState());
+		launch(captureConfig());
 	}
 }
