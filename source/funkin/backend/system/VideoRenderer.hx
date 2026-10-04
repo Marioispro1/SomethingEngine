@@ -3,6 +3,7 @@ package funkin.backend.system;
 #if IMGUI_ENABLED
 import lime.tools.imgui.ImGui;
 import lime.tools.imgui.ImGuiFlags;
+import lime.tools.imgui.ImGuiIO;
 import lime.tools.imgui.ImGuiTypes;
 #end
 
@@ -404,6 +405,8 @@ class VideoRenderer {
 	static function hookImgui() {
 		if (imguiHooked) return;
 		imguiHooked = true;
+		// multi-viewport on: the progress window opens as its own OS window next to the game
+		ImGuiIO.configFlags |= ImGuiConfigFlags.ViewportsEnable;
 		try lime.tools.imgui.ImGuiHandler.instance.addCallback(drawRenderWindow)
 		catch (e:Dynamic) {}
 	}
