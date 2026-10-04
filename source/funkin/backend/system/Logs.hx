@@ -20,6 +20,10 @@ final class Logs {
 
 	public static var nativeTrace = Log.trace;
 	public static function init() {
+		// errors route to our console instead of force-opening the flixel debugger
+		for (style in [LogStyle.NORMAL, LogStyle.WARNING, LogStyle.ERROR, LogStyle.NOTICE, LogStyle.CONSOLE])
+			style.openConsole = false;
+
 		Log.trace = function(v:Dynamic, ?infos:Null<haxe.PosInfos>) {
 			var data = [
 				logText('${infos.fileName}:${infos.lineNumber}: ', CYAN, TRACE),
