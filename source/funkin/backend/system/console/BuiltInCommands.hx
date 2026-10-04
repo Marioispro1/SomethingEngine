@@ -15,6 +15,7 @@ import funkin.menus.StoryMenuState;
 import funkin.backend.system.console.ConsoleCommand;
 import funkin.backend.utils.HttpUtil;
 import funkin.backend.utils.native.HiddenProcess;
+import flixel.input.keyboard.FlxKey;
 #if sys
 import funkin.backend.utils.ZipUtil;
 #end
@@ -60,6 +61,36 @@ class BuiltInCommands {
 		}
 	});
 	static var clear = new FuncCommand("clear", "", "(Clears the console log)", function(args) { @:privateAccess ConsoleUI.instance.clearConsole(); });
+	static var binds = new FuncCommand("binds", "[filter]", "(Lists the keyboard keys bound to each control)", function(args) {
+		var filter = args.length > 0 ? args[0].toUpperCase() : null;
+		var strBuf:StringBuf = new StringBuf();
+		strBuf.add("\nKeybinds:");
+		for (control in Type.allEnums(funkin.backend.system.Controls.Control)) {
+			var name = control.getName();
+			if (filter != null && name.indexOf(filter) == -1) continue;
+			var p1:Array<Dynamic> = Reflect.field(Options, 'P1_$name') ?? [];
+			var p2:Array<Dynamic> = Reflect.field(Options, 'P2_$name') ?? [];
+			var p1Str = [for (k in p1) '$k'].join(", ");
+			var p2Str = [for (k in p2) '$k'].join(", ");
+			strBuf.add('\n\t$name  P1=[$p1Str]  P2=[$p2Str]');
+		}
+		strBuf.add("\n\n\t(keycodes - 113=F2 114=F3 115=F4 116=F5 55=7 56=8 9=TAB)");
+		Logs.infos(strBuf.toString());
+	});
+	static var resetBinds = new FuncCommand("resetbinds", "", "(Clears all saved keybind overrides - defaults come back on restart)", function(args) {
+		try {
+			var data:Dynamic = Options.__save.data;
+			var removed = 0;
+			for (f in Reflect.fields(data)) {
+				if (f.startsWith("P1_") || f.startsWith("P2_")) {
+					Reflect.deleteField(data, f);
+					removed++;
+				}
+			}
+			Options.__save.flush();
+			Logs.infos('Cleared $removed saved keybinds - restart to restore defaults.');
+		} catch (e:Dynamic) Logs.error('Could not clear keybinds: $e');
+	});
 	static var pause = new FuncCommand("pause", "", "(Toggles pause on game)", function(args) { 
 		var game:FunkinGame = cast FlxG.game;
 		game.toggleManualPause();
