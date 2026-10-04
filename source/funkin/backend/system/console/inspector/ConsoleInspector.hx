@@ -686,11 +686,13 @@ class ConsoleInspector {
 
 	/** Small always-on-top perf window - runs on its own ImGui callback so it works with the inspector closed. */
 	function perfOverlay() {
+		// renders need a clean gameplay-only screen; progress lives in the renderer's own window
+		if (funkin.backend.system.VideoRenderer.active) return;
+		drawWatch();
 		if (showPerfPtr.value != showPerf) {
 			showPerf = showPerfPtr.value;
 			persistSettings();
 		}
-		drawWatch();
 		if (!showPerf) return;
 
 		var ms = FlxG.elapsed * 1000;

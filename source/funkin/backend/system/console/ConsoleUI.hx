@@ -46,6 +46,7 @@ class ConsoleUI {
 
 	private var active:Bool = false;
 	private var inspectorActive:Bool = false;
+	private var toggleDebounce:Float = 0;
 	#if IMGUI_ENABLED
 	private var style:ImGuiStyle;
 	#end
@@ -255,30 +256,29 @@ class ConsoleUI {
 			return;
 		}
 		
+		// double-check through flixel so a stale imgui key state can't pop the console open
+		toggleDebounce -= FlxG.elapsed;
+		var canToggle = toggleDebounce <= 0;
+
 		var toggled:Bool = false;
-		if (!Options.useNativeConsole) {
+		if (canToggle && !Options.useNativeConsole) {
 			for (key in Options.SOLO_DEV_CONSOLE) {
 				if (!key.isNamedImGuiKey()) continue; //prevent imgui assert if key == FlxKey.NONE
-				if (ImGui.isKeyPressed(key.toImGuiKey(), false)) toggled = true;
+				if (ImGui.isKeyPressed(key.toImGuiKey(), false)
+					&& FlxG.keys.checkStatus(key, flixel.input.FlxInput.FlxInputState.JUST_PRESSED)) toggled = true;
 			}
 		}
-		if (toggled) toggleUI();
+		if (toggled) { toggleUI(); toggleDebounce = 0.3; }
 
 		var toggledInspector:Bool = false;
-		for (key in Options.SOLO_DEV_INSPECTOR) {
-			if (!key.isNamedImGuiKey()) continue;
-			if (ImGui.isKeyPressed(key.toImGuiKey(), false)) toggledInspector = true;
-		}
-		if (toggledInspector) toggleInspector();
-
-		// F5 reloads the current state's scripts - same as the inspector's Reload State Scripts
-		if (ImGui.isKeyPressed(ImGuiKey.F5, false)) {
-			try {
-				if (FlxG.state is funkin.backend.MusicBeatState) (cast FlxG.state : funkin.backend.MusicBeatState).stateScripts.reload();
-				Logs.trace("State scripts reloaded (F5)");
+		if (canToggle) {
+			for (key in Options.SOLO_DEV_INSPECTOR) {
+				if (!key.isNamedImGuiKey()) continue;
+				if (ImGui.isKeyPressed(key.toImGuiKey(), false)
+					&& FlxG.keys.checkStatus(key, flixel.input.FlxInput.FlxInputState.JUST_PRESSED)) toggledInspector = true;
 			}
-			catch (e:Dynamic) Logs.error('Script reload failed: $e');
 		}
+		if (toggledInspector) { toggleInspector(); toggleDebounce = 0.3; }
 
 		// game-side mouse input stays dead while the editor is open; ImGui feeds the editor
 		// directly (position still updates). Set per-frame so it can't get stuck disabled.

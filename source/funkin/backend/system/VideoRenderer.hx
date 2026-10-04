@@ -1,5 +1,11 @@
 package funkin.backend.system;
 
+#if IMGUI_ENABLED
+import lime.tools.imgui.ImGui;
+import lime.tools.imgui.ImGuiFlags;
+import lime.tools.imgui.ImGuiTypes;
+#end
+
 typedef VideoRenderSettings = {
 	var fps:Float;
 
@@ -131,6 +137,9 @@ class VideoRenderer {
 	static var prevWindowY:Int = 0;
 	static var prevBorderless:Bool = false;
 
+	/** Output label for the detached progress window. */
+	public static var currentLabel:String = null;
+
 	public static function begin(clockStartMs:Float, songEndMs:Float, ?outputName:String):Void {
 		final s = settings;
 
@@ -159,6 +168,21 @@ class VideoRenderer {
 		FlxG.random.resetInitialSeed();
 
 		applyOutputSize();
+
+		currentLabel = outputName;
+
+		// clean capture: hide the dev console + state editor so nothing but gameplay is on screen
+		#if IMGUI_ENABLED
+		try {
+			var ui = funkin.backend.system.console.ConsoleUI.instance;
+			if (ui != null) {
+				if (@:privateAccess ui.active) ui.toggleUI();
+				if (@:privateAccess ui.inspectorActive) ui.toggleInspector();
+			}
+		}
+		catch (e:Dynamic) {}
+		hookImgui();
+		#end
 
 		if (s.encode) {
 			VideoEncoder.start(outputName != null ? outputName : "render", fps);
@@ -373,4 +397,43 @@ class VideoRenderer {
 		final seconds = totalSeconds % 60;
 		return '${Std.int(totalSeconds / 60)}:${seconds < 10 ? "0" : ""}$seconds';
 	}
+
+	#if IMGUI_ENABLED
+	static var imguiHooked:Bool = false;
+
+	static function hookImgui() {
+		if (imguiHooked) return;
+		imguiHooked = true;
+		try lime.tools.imgui.ImGuiHandler.instance.addCallback(drawRenderWindow)
+		catch (e:Dynamic) {}
+	}
+
+	/**
+	 * Detached render-progress window. ImGui viewports are enabled, so once it lands outside the
+	 * main viewport it becomes its own OS window; it's also drawn after the frame capture so it
+	 * never shows up in the video.
+	 */
+	static function drawRenderWindow() {
+		if (!active) return;
+		var vp = ImGui.getMainViewport();
+		ImGui.setNextWindowPos(vp.posX + vp.sizeX + 16, vp.posY + 32, ImGuiCond.FirstUseEver);
+		ImGui.setNextWindowBGAlpha(0.85);
+		var flags = ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoNav;
+		if (ImGui.begin('Video Render##progress', null, flags)) {
+			ImGui.text(currentLabel ?? "render");
+			var total = totalFrames;
+			ImGui.progressBar(progress, 300, 16);
+			ImGui.text(total > 0
+				? '$frameIndex / $total frames   ${Std.int(progress * 100)}%'
+				: '$frameIndex frames');
+			var e = eta;
+			if (e > 0 && total > 0)
+				ImGui.text('ETA ${formatTime(e * 1000)}   -   '
+					+ '${Math.round(realFps * 10) / 10} render fps   -   ${formatTime(elapsed * 1000)} elapsed');
+			else
+				ImGui.text('${formatTime(elapsed * 1000)} elapsed');
+		}
+		ImGui.end();
+	}
+	#end
 }

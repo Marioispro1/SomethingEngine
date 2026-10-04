@@ -1,4 +1,4 @@
-package funkin.backend.system.console;
+﻿package funkin.backend.system.console;
 import funkin.backend.scripting.ModState;
 import funkin.menus.credits.CreditsMain;
 import funkin.editors.stage.StageEditor;
@@ -14,6 +14,7 @@ import funkin.menus.FreeplayState;
 import funkin.menus.StoryMenuState;
 import funkin.backend.system.console.ConsoleCommand;
 import funkin.backend.utils.HttpUtil;
+import funkin.backend.utils.native.HiddenProcess;
 #if sys
 import funkin.backend.utils.ZipUtil;
 #end
@@ -439,7 +440,7 @@ class BuiltInCommands {
 						// curl (bundled in Windows 10+) handles CDN redirects properly; fall back to haxe.Http
 						var ok = false;
 						try {
-							var proc = new sys.io.Process("curl", ["-sSL", "-f", "-o", zipPath, url]);
+							var proc = new HiddenProcess("curl", ["-sSL", "-f", "-o", zipPath, url]);
 							var code = proc.exitCode();
 							proc.close();
 							ok = code == 0;

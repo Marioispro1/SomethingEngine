@@ -1,6 +1,7 @@
-package funkin.backend.system;
+﻿package funkin.backend.system;
 
 import lime.utils.UInt8Array;
+import funkin.backend.utils.native.HiddenProcess;
 
 typedef VideoRenderResult = {
 	var path:String;
@@ -35,7 +36,7 @@ class VideoEncoder {
 	static var outputFps:Float = 60;
 
 	#if sys
-	static var proc:sys.io.Process = null;
+	static var proc:HiddenProcess = null;
 	static var pixels:UInt8Array = null;
 	static var pixelBytes:haxe.io.Bytes = null;
 	static var frameSize:Int = 0;
@@ -69,7 +70,7 @@ class VideoEncoder {
 		if (ffmpegFound != null) return ffmpegFound;
 
 		try {
-			var probe = new sys.io.Process("ffmpeg", ["-version"]);
+			var probe = new HiddenProcess("ffmpeg", ["-version"]);
 			probe.exitCode();
 			probe.close();
 			ffmpegFound = true;
@@ -142,7 +143,7 @@ class VideoEncoder {
 
 					var code = -1;
 					try {
-						var p = new sys.io.Process("ffmpeg", args);
+						var p = new HiddenProcess("ffmpeg", args);
 						var err = readAll(p.stderr);
 						code = p.exitCode();
 						p.close();
@@ -266,7 +267,7 @@ class VideoEncoder {
 			"-vf", "vflip,crop=trunc(iw/2)*2:trunc(ih/2)*2"
 		].concat(codecArgs()).concat([silentPath]);
 
-		try proc = new sys.io.Process("ffmpeg", args)
+		try proc = new HiddenProcess("ffmpeg", args)
 		catch (e:Dynamic) return startFailed('ffmpeg would not start ($e). Is it on PATH?');
 
 		drain(proc.stderr, true);
@@ -362,11 +363,11 @@ class VideoEncoder {
 		var gifPath = videoPath.substr(0, videoPath.length - 4) + ".gif";
 		var palPath = videoPath + ".pal.png";
 		try {
-			var p1 = new sys.io.Process("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error", "-i", videoPath, "-vf", "palettegen", palPath]);
+			var p1 = new HiddenProcess("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error", "-i", videoPath, "-vf", "palettegen", palPath]);
 			var c1 = p1.exitCode();
 			p1.close();
 			if (c1 != 0) { remove(palPath); log('palettegen failed ($c1)', WARNING); return null; }
-			var p2 = new sys.io.Process("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error", "-i", videoPath, "-i", palPath,
+			var p2 = new HiddenProcess("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error", "-i", videoPath, "-i", palPath,
 				"-lavfi", 'fps=15,scale=trunc(iw/4)*2:-1:flags=lanczos[x];[x][1:v]paletteuse', gifPath]);
 			var c2 = p2.exitCode();
 			p2.close();
@@ -483,7 +484,7 @@ class VideoEncoder {
 
 		var code = -1;
 		try {
-			var muxer = new sys.io.Process("ffmpeg", args);
+			var muxer = new HiddenProcess("ffmpeg", args);
 			var err = readAll(muxer.stderr);
 			code = muxer.exitCode();
 			muxer.close();
