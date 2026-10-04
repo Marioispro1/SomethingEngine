@@ -82,10 +82,9 @@ class VideoEncoder {
 		#end
 	}
 
-	/** Container extension for the selected codec: h264/h265 -> mp4, vp9 -> webm, prores -> mov. */
+	/** Container extension for the selected codec: h264/h265/nvenc/amf -> mp4, vp9 -> webm, prores -> mov. */
 	public static function codecExt():String
 		return switch (VideoRenderer.settings.codec) {
-			case 1, 0: "mp4";
 			case 2: "webm";
 			case 3: "mov";
 			default: "mp4";
@@ -96,6 +95,12 @@ class VideoEncoder {
 			case 1: "h265";
 			case 2: "vp9";
 			case 3: "prores";
+			case 4: "h264_nvenc";
+			case 5: "hevc_nvenc";
+			case 6: "h264_amf";
+			case 7: "hevc_amf";
+			case 8: "av1_nvenc";
+			case 9: "av1_amf";
 			default: "h264";
 		}
 
@@ -114,6 +119,24 @@ class VideoEncoder {
 			case 3: ["-c:v", "prores_ks",
 				"-profile:v", ["4", "4", "3", "2", "2"][s.preset],
 				"-vendor", "apl0", "-pix_fmt", "yuv422p10le"];
+			case 4: ["-c:v", "h264_nvenc",
+				"-preset", ["p1", "p2", "p4", "p6", "p7"][s.preset],
+				"-rc", "vbr", "-cq", crf, "-b:v", "0", "-pix_fmt", "yuv420p"];
+			case 5: ["-c:v", "hevc_nvenc",
+				"-preset", ["p1", "p2", "p4", "p6", "p7"][s.preset],
+				"-rc", "vbr", "-cq", crf, "-b:v", "0", "-tag:v", "hvc1", "-pix_fmt", "yuv420p"];
+			case 6: ["-c:v", "h264_amf",
+				"-quality", ["speed", "speed", "balanced", "quality", "quality"][s.preset],
+				"-rc", "cqp", "-qp_p", crf, "-qp_i", crf, "-pix_fmt", "yuv420p"];
+			case 7: ["-c:v", "hevc_amf",
+				"-quality", ["speed", "speed", "balanced", "quality", "quality"][s.preset],
+				"-rc", "cqp", "-qp_p", crf, "-qp_i", crf, "-pix_fmt", "yuv420p"];
+			case 8: ["-c:v", "av1_nvenc",
+				"-preset", ["p1", "p2", "p4", "p6", "p7"][s.preset],
+				"-rc", "vbr", "-cq", crf, "-b:v", "0", "-pix_fmt", "yuv420p"];
+			case 9: ["-c:v", "av1_amf",
+				"-quality", ["speed", "speed", "balanced", "quality", "quality"][s.preset],
+				"-rc", "cqp", "-qp_p", crf, "-qp_i", crf, "-pix_fmt", "yuv420p"];
 			default: ["-c:v", "libx264",
 				"-preset", ["ultrafast", "veryfast", "fast", "medium", "slow"][s.preset],
 				"-crf", crf, "-pix_fmt", "yuv420p"];

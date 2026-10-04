@@ -105,12 +105,18 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 			{label: "H.264 (mp4)", value: 0},
 			{label: "H.265 (mp4)", value: 1},
 			{label: "VP9 (webm)", value: 2},
-			{label: "ProRes (mov)", value: 3}
+			{label: "ProRes (mov)", value: 3},
+			{label: "H.264 NVENC", value: 4},
+			{label: "H.265 NVENC", value: 5},
+			{label: "H.264 AMF", value: 6},
+			{label: "H.265 AMF", value: 7},
+			{label: "AV1 NVENC", value: 8},
+			{label: "AV1 AMF", value: 9}
 		], s.codec);
 		add(codecDropDown);
 		addLabelOn(codecDropDown, "Codec");
 
-		presetDropDown = new UIDropDown(codecDropDown.x + codecDropDown.bWidth + 16, colY, 170, 32, [
+		presetDropDown = new UIDropDown(codecDropDown.x + 196, colY, 170, 32, [
 			{label: "Fastest", value: 0},
 			{label: "Fast", value: 1},
 			{label: "Balanced", value: 2},
@@ -120,7 +126,7 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 		add(presetDropDown);
 		addLabelOn(presetDropDown, "Preset");
 
-		crfStepper = new UINumericStepper(presetDropDown.x + presetDropDown.bWidth + 16, colY, s.crf, 1, 0, 0, 51, 80);
+		crfStepper = new UINumericStepper(presetDropDown.x + 186, colY, s.crf, 1, 0, 0, 51, 80);
 		add(crfStepper);
 		addLabelOn(crfStepper, "CRF (lower = better)");
 
