@@ -13,6 +13,10 @@ import funkin.menus.MainMenuState;
 import funkin.menus.FreeplayState;
 import funkin.menus.StoryMenuState;
 import funkin.backend.system.console.ConsoleCommand;
+import funkin.backend.utils.HttpUtil;
+#if sys
+import funkin.backend.utils.ZipUtil;
+#end
 
 
 class BuiltInCommands {
@@ -145,6 +149,56 @@ class BuiltInCommands {
 		} catch(e) {
 			Logs.error('Could not switch to $name: $e');
 		}
+	});
+
+	static var downloadFFmpeg = new FuncCommand("downloadFFmpeg", "", "(downloads ffmpeg next to the exe so the video renderer works, ~100MB)", function(args) {
+		#if (sys && windows)
+		Logs.trace("Downloading ffmpeg - this can take a minute on a slow connection...");
+		sys.thread.Thread.create(function() {
+			var exeDir = haxe.io.Path.directory(Sys.programPath());
+			var zipPath = '$exeDir/.ffmpeg-download.zip';
+			try {
+				var mirrors = [
+					"https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+					"https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+				];
+				var got = false;
+				for (url in mirrors) {
+					try {
+						var bytes = HttpUtil.requestBytes(url);
+						sys.io.File.saveBytes(zipPath, bytes);
+						got = true;
+						break;
+					}
+					catch (e:Dynamic) Logs.trace('ffmpeg mirror failed ($url): $e', WARNING);
+				}
+				if (!got) {
+					Logs.error("Every ffmpeg mirror failed - check your internet connection.");
+					return;
+				}
+
+				var extracted = 0;
+				var zip = ZipUtil.openZip(zipPath);
+				for (entry in zip.read()) {
+					var base = entry.fileName.toLowerCase().split("/").pop();
+					if (base != "ffmpeg.exe" && base != "ffprobe.exe") continue;
+					sys.io.File.saveBytes('$exeDir/$base', ZipUtil.unzip(entry));
+					extracted++;
+				}
+				try sys.FileSystem.deleteFile(zipPath) catch (e:Dynamic) {}
+
+				if (extracted > 0 && funkin.backend.system.VideoEncoder.recheck())
+					Logs.trace("ffmpeg is ready next to the exe - the video renderer works now.");
+				else
+					Logs.error("Download finished but no ffmpeg.exe was found in the archive.");
+			}
+			catch (e:Dynamic) {
+				Logs.error('ffmpeg download failed: $e');
+			}
+		});
+		#else
+		Logs.error("downloadFFmpeg only works on Windows builds - grab it from ffmpeg.org or your package manager.");
+		#end
 	});
 
 	static var recordInputs = new FuncCommand("recordInputs", "", "(restarts the state and records all inputs; stop with stopInputs)", function(args) {

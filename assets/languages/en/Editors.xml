@@ -501,7 +501,7 @@
 			</group>
 
 			<group name="Problems" prefix="problems.">
-				<str id="ffmpeg">ffmpeg was not found on PATH, so nothing can be encoded.</str>
+				<str id="ffmpeg">ffmpeg was not found on PATH, so nothing can be encoded. Run "downloadFFmpeg" in the F3 console to fetch it.</str>
 				<str id="range">End has to come after start.</str>
 				<str id="fps">Frame rate has to be above zero.</str>
 			</group>

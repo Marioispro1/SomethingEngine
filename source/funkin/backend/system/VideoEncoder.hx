@@ -56,6 +56,14 @@ class VideoEncoder {
 	static var ffmpegFound:Null<Bool> = null;
 	#end
 
+	/** Re-probes for ffmpeg - call after installing it so the renderer unlocks without a restart. */
+	public static function recheck():Bool {
+		#if sys
+		ffmpegFound = null;
+		#end
+		return available();
+	}
+
 	public static function available():Bool {
 		#if sys
 		if (ffmpegFound != null) return ffmpegFound;
