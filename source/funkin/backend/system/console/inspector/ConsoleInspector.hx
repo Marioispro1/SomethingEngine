@@ -21,6 +21,7 @@ import funkin.game.Stage;
 
 #if IMGUI_ENABLED
 import lime.tools.imgui.ImGuiFlags;
+import lime.tools.imgui.ImGuiHandler;
 import lime.tools.imgui.ImGuiTypes;
 import lime.tools.imgui.ImGuiPtr;
 #end
@@ -68,6 +69,8 @@ class ConsoleInspector {
 		#if IMGUI_ENABLED
 		objectProperties.inspector = this;
 		loadSettings();
+		// the perf overlay draws even when the inspector itself is closed
+		ImGuiHandler.instance.addCallback(perfOverlay);
 		#end
 	}
 
@@ -126,6 +129,11 @@ class ConsoleInspector {
 	/** Draws keyframe markers + motion paths over the game view. */
 	public var showKeyOverlay:Bool = true;
 	var showKeyOverlayPtr = new ImGuiBoolPtr(true);
+
+	/** Always-on-top perf overlay (frame graph / fps / memory). View menu or `perf` command. */
+	public var showPerf:Bool = false;
+	var showPerfPtr = new ImGuiBoolPtr(false);
+	var frameTimes:Array<Float> = [];
 
 	/** Keyframe marker being dragged in the scene, if any. */
 	var keyDrag:{obj:FlxBasic, index:Int, cam:FlxCamera} = null;
@@ -199,6 +207,7 @@ class ConsoleInspector {
 	var savedGizmoMode:Int = -1;
 	var savedClickSelect:Bool = true;
 	var savedKeyOverlay:Bool = true;
+	var savedShowPerf:Bool = false;
 
 	/** Asset browser window state. */
 	var assetBrowserOpen = new ImGuiBoolPtr(false);
@@ -377,6 +386,7 @@ class ConsoleInspector {
 				if (ImGui.menuItem("Object Properties")) objectProperties.isOpen.value = true;
 				if (ImGui.menuItem("Sound Preview", null, soundPreviewOpen.value)) soundPreviewOpen.value = !soundPreviewOpen.value;
 				if (ImGui.menuItem("Asset Browser", null, assetBrowserOpen.value)) assetBrowserOpen.value = !assetBrowserOpen.value;
+				if (ImGui.menuItem("Perf Overlay", null, showPerf)) { showPerf = !showPerf; showPerfPtr.value = showPerf; }
 				if (ImGui.menuItem("Screenshot to exports/")) takeScreenshot();
 				if (ImGui.menuItem("Reset Layout")) {
 					forceLayout = true;
@@ -617,6 +627,42 @@ class ConsoleInspector {
 		if (FlxG.state is MusicBeatState)
 			(cast FlxG.state : MusicBeatState).stateScripts.reload();
 	}
+
+	/** Small always-on-top perf window - runs on its own ImGui callback so it works with the inspector closed. */
+	function perfOverlay() {
+		if (showPerfPtr.value != showPerf) {
+			showPerf = showPerfPtr.value;
+			persistSettings();
+		}
+		if (!showPerf) return;
+
+		var ms = FlxG.elapsed * 1000;
+		if (frameTimes.length == 0 || frameTimes[frameTimes.length - 1] != ms) {
+			frameTimes.push(ms);
+			if (frameTimes.length > 240) frameTimes.shift();
+		}
+		var fps = FlxG.elapsed > 0 ? 1 / FlxG.elapsed : 0;
+		var avg = 0.0, max = 0.0;
+		for (t in frameTimes) { avg += t; if (t > max) max = t; }
+		if (frameTimes.length > 0) avg /= frameTimes.length;
+
+		var stateName = Type.getClassName(Type.getClass(FlxG.state));
+		ImGui.setNextWindowPos(6, 6, ImGuiCond.FirstUseEver);
+		ImGui.setNextWindowBGAlpha(0.6);
+		var flags = ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoFocusOnAppearing | ImGuiWindowFlags.NoNav;
+		if (ImGui.begin("Perf##overlay", showPerfPtr, flags)) {
+			var overlay = '${round1(ms)}ms  ${Std.int(fps)}fps';
+			ImGui.text(stateName);
+			ImGui.text('$overlay  avg ${round1(avg)}ms  max ${round1(max)}ms');
+			#if cpp
+			ImGui.text('mem ${Std.int(cpp.vm.Gc.memInfo64(cpp.vm.Gc.MEM_INFO_USAGE) / 1048576)} MB');
+			#end
+			ImGui.plotLines("##frametimes", frameTimes, frameTimes.length, 0, overlay, 0, Math.max(40, max), 280, 42);
+		}
+		ImGui.end();
+	}
+
+	inline function round1(v:Float):Float return Std.int(v * 10) / 10;
 
 	public function displayUI() {
 		// rebuild the scene tree at ~7Hz (or instantly when an edit marks it dirty)
@@ -1017,21 +1063,24 @@ class ConsoleInspector {
 				if (d.gizmoMode != null) gizmo.gizmoMode = d.gizmoMode;
 				if (d.clickSelect != null) { clickSelect = d.clickSelect; clickSelectPtr.value = d.clickSelect; }
 				if (d.showKeyOverlay != null) { showKeyOverlay = d.showKeyOverlay; showKeyOverlayPtr.value = d.showKeyOverlay; }
+			if (d.showPerf != null) { showPerf = d.showPerf; showPerfPtr.value = d.showPerf; }
 			}
 		} catch(e) {}
 		savedGizmoMode = gizmo.gizmoMode;
 		savedClickSelect = clickSelect;
 		savedKeyOverlay = showKeyOverlay;
+		savedShowPerf = showPerf;
 	}
 
 	/** Writes editor settings to FlxG.save when any tracked value changed since last write. */
 	function persistSettings() {
-		if (gizmo.gizmoMode == savedGizmoMode && clickSelect == savedClickSelect && showKeyOverlay == savedKeyOverlay) return;
+		if (gizmo.gizmoMode == savedGizmoMode && clickSelect == savedClickSelect && showKeyOverlay == savedKeyOverlay && showPerf == savedShowPerf) return;
 		savedGizmoMode = gizmo.gizmoMode;
 		savedClickSelect = clickSelect;
 		savedKeyOverlay = showKeyOverlay;
+		savedShowPerf = showPerf;
 		try {
-			FlxG.save.data.sneEditor = {gizmoMode: gizmo.gizmoMode, clickSelect: clickSelect, showKeyOverlay: showKeyOverlay};
+			FlxG.save.data.sneEditor = {gizmoMode: gizmo.gizmoMode, clickSelect: clickSelect, showKeyOverlay: showKeyOverlay, showPerf: showPerf};
 			FlxG.save.flush();
 		} catch(e) {}
 	}

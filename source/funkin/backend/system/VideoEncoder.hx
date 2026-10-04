@@ -117,6 +117,50 @@ class VideoEncoder {
 			default: 0;
 		}
 
+	static var mixing:Bool = false;
+
+	/** Mixes inst+voices into a single mp3 in renders/ on a worker thread - no video render needed. */
+	public static function exportAudioMix(audioAssets:Array<String>, outName:String):Void {
+		#if sys
+		if (active || mixing) { log('audio export skipped - encoder is busy', WARNING); return; }
+		mixing = true;
+		sys.thread.Thread.create(function() {
+			try {
+				var tracks = extractAudio(audioAssets);
+				var outPath = haxe.io.Path.join([outputDir, outName + ".mp3"]);
+				if (tracks.length == 0) {
+					log('audio export: no audio assets found for $outName', WARNING);
+				}
+				else {
+					var args = ["-y", "-hide_banner", "-loglevel", "error"];
+					for (t in tracks) { args.push("-i"); args.push(t); }
+					if (tracks.length > 1) {
+						args.push("-filter_complex");
+						args.push('amix=inputs=${tracks.length}:normalize=0');
+					}
+					for (a in ["-c:a", "libmp3lame", "-q:a", "2", outPath]) args.push(a);
+
+					var code = -1;
+					try {
+						var p = new sys.io.Process("ffmpeg", args);
+						var err = readAll(p.stderr);
+						code = p.exitCode();
+						p.close();
+						if (code != 0) logTail = err.split("\n");
+					}
+					catch (e:Dynamic) {}
+
+					if (code == 0 && sys.FileSystem.exists(outPath)) log('audio mix exported: $outPath');
+					else log('audio mix failed ($code): ${logTail.join(" | ")}', ERROR);
+				}
+				for (t in tracks) remove(t);
+			}
+			catch (e:Dynamic) log('audio mix failed: $e', ERROR);
+			mixing = false;
+		});
+		#end
+	}
+
 	/** Container extension for the selected codec: h264/h265/nvenc/amf -> mp4, vp9 -> webm, prores -> mov. */
 	public static function codecExt():String
 		return switch (VideoRenderer.settings.codec) {

@@ -195,6 +195,11 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 		clearQueueButton = new UIButton(queueButton.x - 12 - 80, closeButton.y, "Clear", () -> renderQueue = [], 80);
 		clearQueueButton.selectable = false;
 		add(clearQueueButton);
+
+		var mixButton = new UIButton(left, closeButton.y - 44, "Export audio mix", exportMix, 170);
+		add(mixButton);
+		var allButton = new UIButton(mixButton.x + 182, closeButton.y - 44, "Queue all songs", queueAll, 170);
+		add(allButton);
 	}
 
 	function captureConfig():QueuedRender {
@@ -220,6 +225,44 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 	function queueCurrent() {
 		UIUtil.confirmUISelections(this);
 		renderQueue.push(captureConfig());
+	}
+
+	/** Queues one render per song in the freeplay list (first difficulty each) with the current settings. */
+	function queueAll() {
+		UIUtil.confirmUISelections(this);
+		try {
+			var songs = funkin.menus.FreeplayState.FreeplaySonglist.get(false, 'songs/', false).songs;
+			var n = 0;
+			for (s in songs) {
+				if (s.name == null || s.name.endsWith("/")) continue;
+				var cfg = captureConfig();
+				cfg.song = s.name;
+				cfg.diff = (s.difficulties != null && s.difficulties.length > 0) ? s.difficulties[0] : difficulty;
+				renderQueue.push(cfg);
+				n++;
+			}
+			Logs.trace('queued $n song renders');
+		}
+		catch (e:Dynamic) Logs.error('queue all failed: $e');
+	}
+
+	/** Mixes inst+voices to a single mp3 in renders/ - reuses the encoder's extraction pipeline, no video needed. */
+	function exportMix() {
+		var tracks:Array<String>;
+		try {
+			var data = Chart.parse(songName, difficulty, variant);
+			tracks = [Paths.inst(data.meta.name, difficulty, data.meta.instSuffix)];
+			if (data.meta.needsVoices)
+				tracks.push(Paths.voices(data.meta.name, difficulty, data.meta.vocalsSuffix));
+			if (data.strumLines != null)
+				for (line in data.strumLines)
+					if (line.vocalsSuffix != null && line.vocalsSuffix != "")
+						tracks.push(Paths.voices(data.meta.name, difficulty, line.vocalsSuffix));
+		}
+		catch (e:Dynamic) {
+			tracks = [Paths.inst(songName, difficulty)];
+		}
+		VideoEncoder.exportAudioMix(tracks, '$songName - $difficulty mix');
 	}
 
 	/** Starts a queued render: applies its settings, optionally loads the recorded inputs, then plays the song. */

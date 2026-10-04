@@ -139,6 +139,12 @@ class ConsoleUI {
 		consoleInputTextCallback = new ImGuiInputTextCallback(onInputTextCallback);
 		#end
 
+		try {
+			var saved:Array<Dynamic> = cast FlxG.save.data.sneConsoleHistory;
+			if (saved != null) prevCommands = [for (c in saved) Std.string(c)];
+		}
+		catch (e:Dynamic) {}
+
 		for (i in 0...CONSOLE_MAX_OUPUT) {
 			consoleOutput.push({log: [], times: 0});
 		}
@@ -440,7 +446,11 @@ class ConsoleUI {
 		if (ImGui.inputText("Input##Console", consoleInputString, flags | (forceFocusTextInput ? ImGuiInputTextFlags.ReadOnly : 0), consoleInputTextCallback)) {
 			if (consoleInputString.value != "") {
 				tryExecuteCommand(consoleInputString.value);
-				if (prevCommands[0] != consoleInputString.value) prevCommands.insert(0, consoleInputString.value);
+				if (prevCommands[0] != consoleInputString.value) {
+					prevCommands.insert(0, consoleInputString.value);
+					if (prevCommands.length > 50) prevCommands.resize(50);
+					try FlxG.save.data.sneConsoleHistory = prevCommands catch (e:Dynamic) {}
+				}
 				consoleInputString.value = "";
 				ImGui.setKeyboardFocusHere(-1);
 				autoScrollNextFrame = true;

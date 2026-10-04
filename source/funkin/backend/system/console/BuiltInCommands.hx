@@ -151,6 +151,43 @@ class BuiltInCommands {
 		}
 	});
 
+	static var timeScale = new FuncCommand("timeScale", "[scale]", "(sets game speed - 0.5 = half, 2 = double)", function(args) {
+		if (args[0] == null || args[0] == "") {
+			Logs.trace('timeScale = ${FlxG.timeScale}');
+			return;
+		}
+		var v = Std.parseFloat(args[0]);
+		if (Math.isNaN(v) || v <= 0) {
+			Logs.error("Usage: timeScale <positive number>");
+			return;
+		}
+		FlxG.timeScale = v;
+		Logs.trace('timeScale set to ${FlxG.timeScale}');
+	});
+
+	static var botplay = new FuncCommand("botplay", "[on/off]", "(toggles CPU control of all strumlines, PlayState only)", function(args) {
+		if (!(FlxG.state is PlayState)) {
+			Logs.error("botplay only works in PlayState.");
+			return;
+		}
+		var ps:PlayState = cast FlxG.state;
+		var want:Bool;
+		if (args[0] == "on" || args[0] == "true") want = true;
+		else if (args[0] == "off" || args[0] == "false") want = false;
+		else want = !ps.strumLines.members[0].cpu;
+		for (s in ps.strumLines.members) s.cpu = want;
+		ps.canDie = ps.canDadDie = !want;
+		Logs.trace('botplay ${want ? "on" : "off"}');
+	});
+
+	static var perf = new FuncCommand("perf", "", "(toggles the performance overlay: frame times, fps, memory)", function(args) {
+		#if IMGUI_ENABLED
+		@:privateAccess ConsoleUI.instance.consoleInspector.showPerf = !@:privateAccess ConsoleUI.instance.consoleInspector.showPerf;
+		#else
+		Logs.error("No imgui overlay on this build.");
+		#end
+	});
+
 	static var downloadFFmpeg = new FuncCommand("downloadFFmpeg", "", "(downloads ffmpeg next to the exe so the video renderer works, ~100MB)", function(args) {
 		#if (sys && windows)
 		Logs.trace("Downloading ffmpeg - this can take a minute on a slow connection...");
