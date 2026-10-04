@@ -82,6 +82,41 @@ class VideoEncoder {
 		#end
 	}
 
+	static var _gpuName:String = null;
+
+	/** GL renderer string, e.g. "ANGLE (NVIDIA GeForce RTX 3060 ...)" - cached after first query. */
+	public static function gpuName():String {
+		#if sys
+		if (_gpuName != null) return _gpuName;
+		var name = "";
+		try {
+			var gl = FlxG.stage.window.context.webgl;
+			if (gl != null) name = Std.string(gl.getParameter(gl.RENDERER));
+		}
+		catch (e:Dynamic) {}
+		_gpuName = name;
+		return name;
+		#else
+		return "";
+		#end
+	}
+
+	/** "nvidia" | "amd" | "" - the vendor best suited to hardware encoding here. */
+	public static function gpuVendor():String {
+		var n = gpuName().toLowerCase();
+		return n.contains("nvidia") ? "nvidia"
+			: (n.contains("amd") || n.contains("ati")) ? "amd"
+			: "";
+	}
+
+	/** Codec index best matched to the GPU: nvenc for NVIDIA, amf for AMD, else software h264. */
+	public static function recommendedCodec():Int
+		return switch (gpuVendor()) {
+			case "nvidia": 4;
+			case "amd": 6;
+			default: 0;
+		}
+
 	/** Container extension for the selected codec: h264/h265/nvenc/amf -> mp4, vp9 -> webm, prores -> mov. */
 	public static function codecExt():String
 		return switch (VideoRenderer.settings.codec) {

@@ -1,4 +1,4 @@
-package funkin.editors.render;
+﻿package funkin.editors.render;
 
 import funkin.backend.chart.Chart;
 import funkin.backend.system.VideoEncoder;
@@ -43,6 +43,9 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 	var presetDropDown:UIDropDown;
 	var crfStepper:UINumericStepper;
 	var queueText:UIText;
+	var estText:UIText;
+	var clearQueueButton:UIButton;
+	var songLenMs:Float = 0;
 	var problemText:UIText;
 	var outputText:UIText;
 	var renderButton:UIButton;
@@ -84,6 +87,7 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 							if (n.time + n.sLen > endMs) endMs = n.time + n.sLen;
 		}
 		catch (e:Dynamic) {}
+		songLenMs = endMs;
 
 		add(new UIText(left, windowSpr.y + 30 + 12, windowSpr.bWidth - 48,
 			t("details", [bpm, VideoRenderer.formatTime(endMs)]), 16));
@@ -101,7 +105,9 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 		addLabelOn(resDropDown, t("resolution") + ' (' + t("resolutionHint", [maxRes.width, maxRes.height]) + ')');
 
 		colY += 74;
-		codecDropDown = new UIDropDown(left, colY, 180, 32, [
+		var rec = VideoEncoder.recommendedCodec();
+		if (s.codec == 0 && rec != 0) s.codec = rec;
+		var codecOptions:Array<funkin.editors.ui.UIDropDown.DropDownItem> = [
 			{label: "H.264 (mp4)", value: 0},
 			{label: "H.265 (mp4)", value: 1},
 			{label: "VP9 (webm)", value: 2},
@@ -112,9 +118,12 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 			{label: "H.265 AMF", value: 7},
 			{label: "AV1 NVENC", value: 8},
 			{label: "AV1 AMF", value: 9}
-		], s.codec);
+		];
+		for (o in codecOptions) if (o.value == rec) o.label += " (Recommended)";
+		codecDropDown = new UIDropDown(left, colY, 180, 32, codecOptions, s.codec);
 		add(codecDropDown);
-		addLabelOn(codecDropDown, "Codec");
+		var gpu = VideoEncoder.gpuName();
+		addLabelOn(codecDropDown, "Codec" + (gpu != "" ? ' - $gpu' : ""));
 
 		presetDropDown = new UIDropDown(codecDropDown.x + 196, colY, 170, 32, [
 			{label: "Fastest", value: 0},
@@ -164,6 +173,10 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 			t("output", [VideoEncoder.plannedPath(songName)]), 13, 0xFF888888);
 		add(outputText);
 
+		colY += outputText.height + 4;
+		estText = new UIText(left, colY, windowSpr.bWidth - 48, "", 13, 0xFF88AACC);
+		add(estText);
+
 		colY += outputText.height + 10;
 		problemText = new UIText(left, colY, windowSpr.bWidth - 48, "", 14, 0xFFFF6666);
 		add(problemText);
@@ -179,6 +192,9 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 		queueText = new UIText(left, closeButton.y + 6, 300,
 			renderQueue.length > 0 ? '${renderQueue.length} render(s) queued - starts after this one' : "", 13, 0xFFAAAAAA);
 		add(queueText);
+		clearQueueButton = new UIButton(queueButton.x - 12 - 80, closeButton.y, "Clear", () -> renderQueue = [], 80);
+		clearQueueButton.selectable = false;
+		add(clearQueueButton);
 	}
 
 	function captureConfig():QueuedRender {
@@ -204,7 +220,6 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 	function queueCurrent() {
 		UIUtil.confirmUISelections(this);
 		renderQueue.push(captureConfig());
-		queueText.text = '${renderQueue.length} render(s) queued - starts after this one';
 	}
 
 	/** Starts a queued render: applies its settings, optionally loads the recorded inputs, then plays the song. */
@@ -256,6 +271,20 @@ class VideoRenderSettingsScreen extends UISubstateWindow {
 		if (problemText.text != problem) problemText.text = problem;
 		renderButton.selectable = problem == "";
 		renderButton.alpha = renderButton.field.alpha = problem == "" ? 1 : 0.4;
+
+		// live estimate of the work the render will do
+		var spanMs = (endStepper.value > 0 ? endStepper.value * 1000 : songLenMs) - startStepper.value * 1000;
+		var frames = Math.max(0, Math.ceil(spanMs / 1000 * fpsStepper.value));
+		var est = 'â‰ˆ $frames frames'
+			+ (VideoEncoder.available() && VideoRenderer.realFps > 0 ? '  -  ~${VideoRenderer.formatTime(frames / VideoRenderer.realFps * 1000)} at last speed' : "");
+		if (estText.text != est) estText.text = est;
+
+		// queue state
+		var hasQueue = renderQueue.length > 0;
+		clearQueueButton.selectable = hasQueue;
+		clearQueueButton.alpha = clearQueueButton.field.alpha = hasQueue ? 1 : 0.4;
+		var qText = hasQueue ? '${renderQueue.length} render(s) queued - starts after this one' : "";
+		if (queueText.text != qText) queueText.text = qText;
 
 		super.update(elapsed);
 	}

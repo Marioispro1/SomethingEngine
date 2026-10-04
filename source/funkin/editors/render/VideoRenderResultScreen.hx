@@ -47,6 +47,23 @@ class VideoRenderResultScreen extends UISubstateWindow {
 
 		openButton.selectable = !lost;
 		openButton.alpha = openButton.field.alpha = openButton.selectable ? 1 : 0.4;
+
+		var copyButton = new UIButton(openButton.x - 16 - 130, closeButton.y, "Copy path", copyPath, 130);
+		copyButton.selectable = result.path != null;
+		copyButton.alpha = copyButton.field.alpha = copyButton.selectable ? 1 : 0.4;
+		add(copyButton);
+
+		if (!lost) {
+			try FlxG.sound.play(Paths.sound(Assets.exists(Paths.sound("confirmMenu")) ? "confirmMenu" : "freakyMenu")) catch (e:Dynamic) {}
+		}
+	}
+
+	function copyPath() {
+		try {
+			openfl.desktop.Clipboard.generalClipboard.setData(openfl.desktop.ClipboardFormats.TEXT_FORMAT,
+				#if sys sys.FileSystem.absolutePath(result.path) #else result.path #end);
+		}
+		catch (e:Dynamic) {}
 	}
 
 	function openFolder() {
