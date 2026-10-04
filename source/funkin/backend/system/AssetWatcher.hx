@@ -8,6 +8,7 @@ import openfl.utils.Assets;
 
 #if sys
 import sys.FileSystem;
+import sys.thread.Thread;
 #end
 
 /**
@@ -19,29 +20,46 @@ class AssetWatcher {
 	public static var enabled:Bool = true;
 
 	#if sys
+	// worker thread owns this map - main thread never touches it
 	static var mtimes:Map<String, Float> = new Map();
 	static var inited:Bool = false;
 	static var elapsed:Float = 0;
 	static var changedInTick:Bool = false;
 	static final INTERVAL:Float = 0.75;
 
+	static var mainThread:Thread = null;
+	static var scanRunning:Bool = false;
+
 	public static function init() {
 		if (inited) return;
 		inited = true;
+		mainThread = Thread.current();
 		FlxG.signals.preUpdate.add(update);
-		collect();
+		scanRunning = true;
+		Thread.create(workerScan);
 	}
 
 	static function update():Void {
 		if (!enabled || !Options.devMode) return;
-		elapsed += FlxG.elapsed;
-		if (elapsed < INTERVAL) return;
-		elapsed = 0;
-		changedInTick = false;
-		scanAll();
+
+		// apply whatever the worker thread finished scanning since last frame
+		var msg:Dynamic = Thread.readMessage(false);
+		while (msg != null) {
+			scanRunning = false;
+			for (c in (msg : Array<Dynamic>)) onChanged(c.path, c.id);
+			msg = Thread.readMessage(false);
+		}
 		if (changedInTick) {
 			Paths.assetsTree.resetAssetPathCache();
 			Paths.tempFramesCache.clear();
+			changedInTick = false;
+		}
+
+		elapsed += FlxG.elapsed;
+		if (elapsed >= INTERVAL && !scanRunning) {
+			elapsed = 0;
+			scanRunning = true;
+			Thread.create(workerScan);
 		}
 	}
 
@@ -82,16 +100,22 @@ class AssetWatcher {
 		}
 	}
 
-	static function scanAll() {
-		var out = collect();
-		for (path => id in out) {
-			var mtime = FileSystem.stat(path).mtime.getTime();
-			var old = mtimes.get(path);
-			if (old != null && old != mtime) {
-				mtimes.set(path, mtime);
-				onChanged(path, id);
+	/** Runs on a worker thread: walks every watched dir and stats each file. Sends back only the changed list. */
+	static function workerScan() {
+		var changes:Array<{path:String, id:String}> = [];
+		try {
+			var out = collect();
+			for (path => id in out) {
+				var mtime = FileSystem.stat(path).mtime.getTime();
+				var old = mtimes.get(path);
+				if (old != null && old != mtime) {
+					mtimes.set(path, mtime);
+					changes.push({path: path, id: id});
+				}
 			}
 		}
+		catch (e:Dynamic) {}
+		mainThread.sendMessage(changes);
 	}
 
 	static function onChanged(path:String, id:String) {

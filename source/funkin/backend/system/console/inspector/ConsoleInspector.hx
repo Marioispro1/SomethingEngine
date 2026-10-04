@@ -136,6 +136,10 @@ class ConsoleInspector {
 	/** Scene object(s) being moved by dragging directly with the mouse, if any. */
 	var sceneDrag:{obj:FlxObject, cam:FlxCamera, offX:Float, offY:Float, moved:Bool, others:Array<{o:FlxObject, dx:Float, dy:Float}>} = null;
 
+	/** Scene-tree rebuild throttling: structural edits set objectsDirty for an instant refresh. */
+	var objectsDirty:Bool = true;
+	var objectsTimer:Float = 0;
+
 	/** In-scene text edit state, opened by double-clicking a FlxText. */
 	var textEditTarget:FlxText = null;
 	var textEditOpen = new ImGuiBoolPtr(false);
@@ -615,8 +619,12 @@ class ConsoleInspector {
 	}
 
 	public function displayUI() {
-		
-		updateObjects();
+		// rebuild the scene tree at ~7Hz (or instantly when an edit marks it dirty)
+		if (objectsDirty || (objectsTimer -= FlxG.elapsed) <= 0) {
+			objectsTimer = 0.15;
+			objectsDirty = false;
+			updateObjects();
+		}
 
 		FlxG.mouse.visible = true; //TODO: rework this, temp force on
 		
@@ -1304,6 +1312,7 @@ class ConsoleInspector {
 	}
 
 	public function reparentObject(obj:FlxBasic, newParent:FlxGroup) {
+		objectsDirty = true;
 		if (groupContainsGroup(obj, newParent)) return;
 		var old = findParentGroup(obj, cast FlxG.state);
 		if (old == null || old == newParent) return;
@@ -1371,6 +1380,7 @@ class ConsoleInspector {
 	}
 
 	function createInspectorObject() {
+		objectsDirty = true;
 		var parent = getEditParent();
 		var varName = '__editor_${++editorCounter}';
 		var obj:FlxBasic = null;
@@ -1450,6 +1460,7 @@ class ConsoleInspector {
 
 	/** Renames an editor-created object (affects tree label + patch var name). */
 	public function renameObject(obj:FlxBasic, name:String) {
+		objectsDirty = true;
 		if (name == null || name.length == 0) {
 			editorNames.remove(obj);
 			return;
@@ -1473,6 +1484,7 @@ class ConsoleInspector {
 
 	/** Moves an object by `dir` slots in its group's draw order. */
 	public function moveObject(obj:FlxBasic, dir:Int) {
+		objectsDirty = true;
 		var parent = findParentGroup(obj, cast FlxG.state);
 		if (parent == null || parent.members == null) return;
 		var i = parent.members.indexOf(obj);
@@ -1489,6 +1501,7 @@ class ConsoleInspector {
 
 	/** Duplicates a sprite/text into the same group. */
 	public function duplicateObject(obj:FlxBasic) {
+		objectsDirty = true;
 		var parent = findParentGroup(obj, cast FlxG.state);
 		if (parent == null) return;
 		var varName = '__editor_${++editorCounter}';
@@ -1563,6 +1576,7 @@ class ConsoleInspector {
 
 	/** Creates a new object from the Ctrl+C snapshot, offset so it doesn't overlap the source. */
 	public function pasteClipboard() {
+		objectsDirty = true;
 		var c = clipboard;
 		if (c == null) { runStatus = "Clipboard empty"; return; }
 		var parent = getEditParent();
@@ -1674,6 +1688,7 @@ class ConsoleInspector {
 	 * session, so patch-made objects stay editable and re-export stays idempotent.
 	 */
 	function adoptPatch(state:FlxState) {
+		objectsDirty = true;
 		if (state == lastAdoptedState) return;
 		lastAdoptedState = state;
 		undoStack.resize(0);
@@ -2560,6 +2575,7 @@ class ConsoleInspector {
 	}
 
 	public function deleteInspectorObject(obj:FlxBasic) {
+		objectsDirty = true;
 		var data = findInspectorObjectFor(obj);
 		var isAdded = addedObjects.filter(a -> a.obj == obj).length > 0;
 
