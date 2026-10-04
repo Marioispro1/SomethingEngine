@@ -117,7 +117,10 @@ class BuiltInCommands {
 	static var goToPlayState = new FuncCommand("goToPlayState", "", "(switches state to PlayState, only works if a song is already loaded)", function(args) { if (PlayState.SONG != null) FlxG.switchState(new PlayState()); });
 	static var goToMainMenu = new FuncCommand("goToMainMenu", "", "(switches state to MainMenuState)", function(args) { FlxG.switchState(new MainMenuState()); });
 	static var goToStoryMode = new FuncCommand("goToStoryMode", "", "(switches state to StoryMenuState)", function(args) { FlxG.switchState(new StoryMenuState()); });
-	static var goToFreeplay = new FuncCommand("goToFreeplay", "", "(switches state to FreeplayState)", function(args) { FlxG.switchState(new FreeplayState()); });
+	static var goToFreeplay = new FuncCommand("goToFreeplay", "[song]", "(switches to FreeplayState; with a song name, pre-selects it)", function(args) {
+		if (args[0] != null && args[0] != "") Options.freeplayLastSong = args[0];
+		FlxG.switchState(new FreeplayState());
+	});
 	static var goToOptions = new FuncCommand("goToOptions", "", "(switches state to OptionsMenu)", function(args) { FlxG.switchState(new OptionsMenu()); });
 	static var goToCredits = new FuncCommand("goToCredits", "", "(switches state to CreditsMain)", function(args) { FlxG.switchState(new CreditsMain()); });
 	static var goToTitle = new FuncCommand("goToTitle", "[reset]", "(switches state to TitleState)", function(args) {
@@ -185,6 +188,237 @@ class BuiltInCommands {
 		@:privateAccess ConsoleUI.instance.consoleInspector.showPerf = !@:privateAccess ConsoleUI.instance.consoleInspector.showPerf;
 		#else
 		Logs.error("No imgui overlay on this build.");
+		#end
+	});
+
+	static var skipTo = new FuncCommand("skipTo", "<ms>", "(jumps the song to a position, reseeks audio, drops earlier notes)", function(args) {
+		if (!(FlxG.state is PlayState)) {
+			Logs.error("skipTo only works in PlayState.");
+			return;
+		}
+		var ms = Std.parseFloat(args[0]);
+		if (Math.isNaN(ms) || ms < 0) {
+			Logs.error("Usage: skipTo <milliseconds>");
+			return;
+		}
+		(cast FlxG.state : PlayState).skipTo(ms);
+		Logs.trace('skipped to ${Math.round(ms / 10) / 100}s');
+	});
+
+	static var practice = new FuncCommand("practice", "[on/off]", "(practice mode: no death, F8 respawns at the last measure)", function(args) {
+		if (!(FlxG.state is PlayState)) {
+			Logs.error("practice only works in PlayState.");
+			return;
+		}
+		var ps:PlayState = cast FlxG.state;
+		var want:Bool;
+		if (args[0] == "on" || args[0] == "true") want = true;
+		else if (args[0] == "off" || args[0] == "false") want = false;
+		else want = !ps.practice;
+		ps.practice = want;
+		ps.canDie = !want;
+		Logs.trace(want ? "practice on - F8 restarts at the last measure" : "practice off");
+	});
+
+	static var reloadChart = new FuncCommand("reloadChart", "", "(re-parses the chart from disk and restarts the song)", function(args) {
+		if (PlayState.SONG == null) {
+			Logs.error("No song loaded.");
+			return;
+		}
+		try {
+			Chart.parse(PlayState.SONG.meta.name, PlayState.difficulty, PlayState.variation);
+		}
+		catch (e:Dynamic) {
+			Logs.error('Chart reload failed, staying on the current one: $e');
+			return;
+		}
+		FlxG.resetState();
+	});
+
+	static var reloadScripts = new FuncCommand("reloadScripts", "", "(safe reload of the current state's scripts; reports errors instead of crashing)", function(args) {
+		if (!(FlxG.state is funkin.backend.MusicBeatState)) {
+			Logs.error("Current state has no scripts to reload.");
+			return;
+		}
+		try {
+			(cast FlxG.state : funkin.backend.MusicBeatState).stateScripts.reload();
+			Logs.trace("State scripts reloaded (F5 works too)");
+		}
+		catch (e:Dynamic) Logs.error('Script reload failed: $e');
+	});
+
+	static var toggleScripts = new FuncCommand("toggleScripts", "", "(enables/disables all of the current state's scripts - live patch toggle)", function(args) {
+		if (!(FlxG.state is funkin.backend.MusicBeatState)) {
+			Logs.error("Current state has no scripts.");
+			return;
+		}
+		var scripts = (cast FlxG.state : funkin.backend.MusicBeatState).stateScripts.scripts;
+		var anyOn = false;
+		for (s in scripts) if (s.active) { anyOn = true; break; }
+		for (s in scripts) s.active = !anyOn;
+		Logs.trace('state scripts ${anyOn ? "disabled" : "enabled"} (${scripts.length})');
+	});
+
+	static var mods = new FuncCommand("mods", "", "(lists loaded mod libraries in resolution order; first wins)", function(args) {
+		var libs = funkin.backend.assets.ModsFolder.getLoadedModsLibs();
+		var buf = new StringBuf();
+		buf.add('\nMods (current: ${funkin.backend.assets.ModsFolder.currentModFolder ?? "none"}):');
+		for (l in libs) buf.add('\n\t${l.libName ?? l.prefix ?? "?"}  -  ${l.basePath}');
+		Logs.infos(buf.toString());
+	});
+
+	static var scripts = new FuncCommand("scripts", "", "(lists scripts attached to the current state and their status)", function(args) {
+		if (!(FlxG.state is funkin.backend.MusicBeatState)) {
+			Logs.error("Current state has no scripts.");
+			return;
+		}
+		var buf = new StringBuf();
+		buf.add("\nScripts:");
+		for (s in (cast FlxG.state : funkin.backend.MusicBeatState).stateScripts.scripts)
+			buf.add('\n\t${s.fileName ?? s.path}  active=${s.active}  loaded=${@:privateAccess s.didLoad}');
+		Logs.infos(buf.toString());
+	});
+
+	static var findasset = new FuncCommand("findasset", "<text>", "(greps data/ across all loaded asset libraries for references)", function(args) {
+		#if sys
+		var needle = args[0];
+		if (needle == null || needle == "") {
+			Logs.error("Usage: findasset <text>");
+			return;
+		}
+		var hits = 0;
+		function scan(dir:String, lib:String) {
+			if (hits >= 25 || !sys.FileSystem.exists(dir)) return;
+			for (f in sys.FileSystem.readDirectory(dir)) {
+				if (hits >= 25) break;
+				var p = '$dir/$f';
+				if (sys.FileSystem.isDirectory(p)) scan(p, lib);
+				else if (StringTools.endsWith(f.toLowerCase(), ".hx") || StringTools.endsWith(f.toLowerCase(), ".xml")
+					|| StringTools.endsWith(f.toLowerCase(), ".json") || StringTools.endsWith(f.toLowerCase(), ".txt")) {
+					try {
+						var lines = sys.io.File.getContent(p).split("\n");
+						for (i => line in lines)
+							if (line.indexOf(needle) >= 0) {
+								Logs.trace('[$lib] $p:${i + 1}: ${StringTools.trim(line)}');
+								if (++hits >= 25) break;
+							}
+					}
+					catch (e:Dynamic) {}
+				}
+			}
+		}
+		for (l in funkin.backend.assets.ModsFolder.getLoadedModsLibs()) scan('${l.basePath}/data', l.libName ?? l.basePath);
+		if (hits == 0) Logs.trace('no references to "$needle" found in data/');
+		else if (hits >= 25) Logs.trace("(results capped at 25)");
+		#else
+		Logs.error("findasset needs a sys target.");
+		#end
+	});
+
+	static var findstate = new FuncCommand("findstate", "<name>", "(resolves a fuzzy name to state class names you can pass to goToState)", function(args) {
+		var name = args[0];
+		if (name == null || name == "") {
+			Logs.error("Usage: findstate <name>");
+			return;
+		}
+		var found = [];
+		for (c in [name, '${name}State', 'funkin.menus.$name', 'funkin.menus.${name}State',
+				'funkin.game.$name', 'funkin.editors.$name', 'funkin.editors.${name}Editor',
+				'funkin.backend.system.$name'])
+			if (!found.contains(c) && Type.resolveClass(c) != null) found.push(c);
+		if (found.length > 0) Logs.infos('found: ${found.join(", ")}');
+		else Logs.error('no state class matches "$name" - try goToModState for scripted states');
+	});
+
+	static var clean = new FuncCommand("clean", "[dir]", "(wipes generated dirs: renders/, exports/, crash/ - or one given name)", function(args) {
+		#if sys
+		var targets = (args[0] != null && args[0] != "") ? [args[0]] : ["renders", "exports", "crash"];
+		for (dir in targets) {
+			if (!sys.FileSystem.exists(dir)) continue;
+			var n = 0;
+			for (f in sys.FileSystem.readDirectory(dir)) {
+				var p = '$dir/$f';
+				if (sys.FileSystem.isDirectory(p)) continue;
+				try { sys.FileSystem.deleteFile(p); n++; } catch (e:Dynamic) {}
+			}
+			Logs.trace('cleaned $n file(s) from $dir/');
+		}
+		#else
+		Logs.error("clean needs a sys target.");
+		#end
+	});
+
+	static var resetEditor = new FuncCommand("resetEditor", "", "(wipes saved editor settings + console history)", function(args) {
+		try {
+			FlxG.save.data.sneEditor = null;
+			FlxG.save.data.sneConsoleHistory = null;
+			FlxG.save.flush();
+			Logs.trace("editor settings wiped - reopen the editor to start fresh");
+		}
+		catch (e:Dynamic) Logs.error('resetEditor failed: $e');
+	});
+
+	static var version = new FuncCommand("version", "", "(prints engine build info for bug reports)", function(args) {
+		Logs.infos('${funkin.backend.system.Flags.VERSION_MESSAGE} - API ${funkin.backend.system.Flags.CURRENT_API_VERSION}');
+	});
+
+	static var watch = new FuncCommand("watch", "[expression]", "(toggles the watch window; with an expression, adds it as a watched value)", function(args) {
+		#if IMGUI_ENABLED
+		@:privateAccess var ins = ConsoleUI.instance.consoleInspector;
+		if (ins == null) {
+			Logs.error("Open the inspector (F4) once first so the watch window exists.");
+			return;
+		}
+		if (args.length > 0 && args[0] != "") {
+			var expr = args.join(" ");
+			if (!ins.watchList.contains(expr)) ins.watchList.push(expr);
+			if (!ins.showWatch) { ins.showWatch = true; @:privateAccess ins.showWatchPtr.value = true; }
+			Logs.trace('watching: $expr');
+		}
+		else ins.showWatch = !ins.showWatch;
+		#else
+		Logs.error("No imgui overlay on this build.");
+		#end
+	});
+
+	static var crashes = new FuncCommand("crashes", "", "(lists saved crash logs in crash/ - view one with opencrash <n>)", function(args) {
+		#if sys
+		if (!sys.FileSystem.exists("crash")) {
+			Logs.trace("no crash logs - nothing has crashed yet, nice");
+			return;
+		}
+		var files = [for (f in sys.FileSystem.readDirectory("crash")) if (f.endsWith(".log")) f];
+		files.sort(function(a, b) return a > b ? -1 : 1);
+		var buf = new StringBuf();
+		buf.add('\nCrash logs (${files.length}):');
+		for (i => f in files) buf.add('\n\t${i + 1}. $f');
+		buf.add("\n\tuse `opencrash <n>` to view one");
+		Logs.infos(buf.toString());
+		#else
+		Logs.error("crashes needs a sys target.");
+		#end
+	});
+
+	static var opencrash = new FuncCommand("opencrash", "<n>", "(prints crash log #n from the crashes list into the console)", function(args) {
+		#if sys
+		if (!sys.FileSystem.exists("crash")) {
+			Logs.error("no crash logs found.");
+			return;
+		}
+		var files = [for (f in sys.FileSystem.readDirectory("crash")) if (f.endsWith(".log")) f];
+		files.sort(function(a, b) return a > b ? -1 : 1);
+		var n = Std.parseInt(args[0]);
+		if (n == null || n < 1 || n > files.length) {
+			Logs.error('Usage: opencrash <1-${files.length}>');
+			return;
+		}
+		var content = sys.io.File.getContent('crash/${files[n - 1]}');
+		var lines = content.split("\n");
+		Logs.infos('\n--- ${files[n - 1]} ---');
+		for (i in 0...Std.int(Math.min(lines.length, 60))) Logs.infos(lines[i]);
+		if (lines.length > 60) Logs.infos('... (${lines.length - 60} more lines, open the file for the rest)');
+		#else
+		Logs.error("opencrash needs a sys target.");
 		#end
 	});
 

@@ -109,6 +109,7 @@ final class CrashHandler {
 
 		var report = formatReport(message, stack);
 		trace(report);
+		saveReport(report);
 		quarantine();
 
 		try {
@@ -120,6 +121,18 @@ final class CrashHandler {
 			// quitGame for safety measures atp im not returning back to the menu zlawg. - hero
 			quitGame();
 		}
+	}
+
+	/** Persists the report to crash/crash-<timestamp>.log so `crashes`/`opencrash` can browse it later. */
+	static function saveReport(report:String) {
+		#if sys
+		try {
+			if (!sys.FileSystem.exists("crash")) sys.FileSystem.createDirectory("crash");
+			var stamp = DateTools.format(Date.now(), "%Y%m%d-%H%M%S");
+			sys.io.File.saveContent('crash/crash-$stamp.log', report);
+		}
+		catch (e:Dynamic) {}
+		#end
 	}
 
 	static function showOverlay(report:String) {

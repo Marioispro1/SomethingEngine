@@ -1374,6 +1374,20 @@ class PlayState extends MusicBeatState
 		gameAndCharsCall("onVocalsResync");
 	}
 
+	/** Practice mode (console `practice`): can't die; F8 respawns at the last measure boundary. */
+	public var practice:Bool = false;
+
+	/** Jumps the song to `target` ms: drops notes before it and reseeks inst/vocals. */
+	public function skipTo(target:Float) {
+		Conductor.songPosition = target;
+		for (sl in strumLines.members) {
+			if (sl == null || sl.notes == null) continue;
+			for (n in sl.notes.members)
+				if (n != null && n.strumTime < target) n.kill();
+		}
+		resyncVocals();
+	}
+
 	/**
 	 * Pauses the game.
 	 */
@@ -1535,6 +1549,15 @@ class PlayState extends MusicBeatState
 						break;
 
 			if (isOffsync) resyncVocals();
+		}
+
+		// practice mode: F8 respawns at the previous measure boundary
+		if (practice && FlxG.keys.justPressed.F8) {
+			var measureLen = Conductor.crochet * 4;
+			var pos = Conductor.songPosition;
+			var m = Math.floor(pos / measureLen) * measureLen;
+			if (pos - m < 500) m -= measureLen;
+			skipTo(Math.max(0, m));
 		}
 
 		while(events.length > 0 && events.last().time <= Conductor.songPosition)

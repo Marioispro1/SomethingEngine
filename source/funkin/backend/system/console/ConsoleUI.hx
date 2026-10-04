@@ -271,6 +271,15 @@ class ConsoleUI {
 		}
 		if (toggledInspector) toggleInspector();
 
+		// F5 reloads the current state's scripts - same as the inspector's Reload State Scripts
+		if (ImGui.isKeyPressed(ImGuiKey.F5, false)) {
+			try {
+				if (FlxG.state is funkin.backend.MusicBeatState) (cast FlxG.state : funkin.backend.MusicBeatState).stateScripts.reload();
+				Logs.trace("State scripts reloaded (F5)");
+			}
+			catch (e:Dynamic) Logs.error('Script reload failed: $e');
+		}
+
 		// game-side mouse input stays dead while the editor is open; ImGui feeds the editor
 		// directly (position still updates). Set per-frame so it can't get stuck disabled.
 		FlxG.mouse.enabled = !inspectorActive;

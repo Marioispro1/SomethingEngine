@@ -135,6 +135,19 @@ class ConsoleInspector {
 	var showPerfPtr = new ImGuiBoolPtr(false);
 	var frameTimes:Array<Float> = [];
 
+	/** Watch window: expressions evaluated live in the console hscript context (`watch <expr>`). */
+	public var watchList:Array<String> = [];
+	public var showWatch:Bool = false;
+	var showWatchPtr = new ImGuiBoolPtr(false);
+	var watchTimer:Float = 0;
+	var watchValues:Map<String, String> = [];
+
+	/** Grid overlay drawn over the game view for alignment. View menu -> Grid. */
+	public var showGrid:Bool = false;
+	var showGridPtr = new ImGuiBoolPtr(false);
+	var gridSize:Float = 64;
+	var saveAsName = new ImGuiStringPtr("");
+
 	/** Keyframe marker being dragged in the scene, if any. */
 	var keyDrag:{obj:FlxBasic, index:Int, cam:FlxCamera} = null;
 
@@ -208,6 +221,8 @@ class ConsoleInspector {
 	var savedClickSelect:Bool = true;
 	var savedKeyOverlay:Bool = true;
 	var savedShowPerf:Bool = false;
+	var savedShowWatch:Bool = false;
+	var savedShowGrid:Bool = false;
 
 	/** Asset browser window state. */
 	var assetBrowserOpen = new ImGuiBoolPtr(false);
@@ -374,6 +389,10 @@ class ConsoleInspector {
 				if (ImGui.menuItem("Reload State Scripts")) reloadStateScripts();
 				if (ImGui.menuItem("Save Patch", "Ctrl+S")) savePatch();
 				if (ImGui.isItemHovered()) ImGui.setTooltip("writes data/states/<State>.hx");
+				if (ImGui.menuItem("Save Patch As...")) {
+					saveAsName.value = "";
+					ImGui.openPopup("##savePatchAs");
+				}
 				ImGui.endMenu();
 			}
 			if (ImGui.beginMenu("Add")) {
@@ -387,6 +406,9 @@ class ConsoleInspector {
 				if (ImGui.menuItem("Sound Preview", null, soundPreviewOpen.value)) soundPreviewOpen.value = !soundPreviewOpen.value;
 				if (ImGui.menuItem("Asset Browser", null, assetBrowserOpen.value)) assetBrowserOpen.value = !assetBrowserOpen.value;
 				if (ImGui.menuItem("Perf Overlay", null, showPerf)) { showPerf = !showPerf; showPerfPtr.value = showPerf; }
+				if (ImGui.menuItem("Watch Window", null, showWatch)) { showWatch = !showWatch; showWatchPtr.value = showWatch; }
+				if (ImGui.menuItem("Grid Overlay", null, showGrid)) { showGrid = !showGrid; showGridPtr.value = showGrid; }
+				if (ImGui.menuItem("State Scripts Enabled", null, stateScriptsOn())) toggleStateScripts();
 				if (ImGui.menuItem("Screenshot to exports/")) takeScreenshot();
 				if (ImGui.menuItem("Reset Layout")) {
 					forceLayout = true;
@@ -628,12 +650,47 @@ class ConsoleInspector {
 			(cast FlxG.state : MusicBeatState).stateScripts.reload();
 	}
 
+	function stateScriptsOn():Bool {
+		if (!(FlxG.state is MusicBeatState)) return false;
+		for (s in (cast FlxG.state : MusicBeatState).stateScripts.scripts)
+			if (s.active) return true;
+		return false;
+	}
+
+	/** Live patch toggle - flips `active` on every script attached to the state. */
+	function toggleStateScripts() {
+		if (!(FlxG.state is MusicBeatState)) return;
+		var on = stateScriptsOn();
+		var scripts = (cast FlxG.state : MusicBeatState).stateScripts.scripts;
+		for (s in scripts) s.active = !on;
+		runStatus = 'State scripts ${on ? "disabled" : "enabled"} (${scripts.length})';
+	}
+
+	/** "Save Patch As..." popup - writes the patch under a custom name. */
+	function showSaveAsPopup() {
+		#if sys
+		if (ImGui.beginPopup("##savePatchAs")) {
+			ImGui.textWrapped("Writes data/states/<name>.hx - the patch applies to the state of the same name.");
+			ImGui.setNextItemWidth(-1);
+			ImGui.inputText("Name##savePatchAs", saveAsName);
+			if (ImGui.button("Save##savePatchAs")) {
+				savePatch(sanitizeVarName(saveAsName.value));
+				ImGui.closeCurrentPopup();
+			}
+			ImGui.sameLine();
+			if (ImGui.button("Cancel##savePatchAs")) ImGui.closeCurrentPopup();
+			ImGui.endPopup();
+		}
+		#end
+	}
+
 	/** Small always-on-top perf window - runs on its own ImGui callback so it works with the inspector closed. */
 	function perfOverlay() {
 		if (showPerfPtr.value != showPerf) {
 			showPerf = showPerfPtr.value;
 			persistSettings();
 		}
+		drawWatch();
 		if (!showPerf) return;
 
 		var ms = FlxG.elapsed * 1000;
@@ -664,6 +721,73 @@ class ConsoleInspector {
 
 	inline function round1(v:Float):Float return Std.int(v * 10) / 10;
 
+	/** Live expression watch window - shares the perf overlay's standalone callback. */
+	function drawWatch() {
+		if (showWatchPtr.value != showWatch) {
+			showWatch = showWatchPtr.value;
+			persistSettings();
+		}
+		if (!showWatch) {
+			watchTimer = 0;
+			return;
+		}
+
+		// refresh values at ~10Hz so hscript eval doesn't run every frame
+		watchTimer -= FlxG.elapsed;
+		if (watchTimer <= 0) {
+			watchTimer = 0.1;
+			for (expr in watchList) {
+				var out:String;
+				try out = Std.string(hscript.tryExecute(expr))
+				catch (e:Dynamic) out = 'error: $e';
+				watchValues.set(expr, out);
+			}
+		}
+
+		ImGui.setNextWindowPos(6, 140, ImGuiCond.FirstUseEver);
+		ImGui.setNextWindowBGAlpha(0.6);
+		var flags = ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoFocusOnAppearing | ImGuiWindowFlags.NoNav;
+		if (ImGui.begin("Watch##overlay", showWatchPtr, flags)) {
+			if (watchList.length == 0) ImGui.text("no watches - `watch <expr>` in the console adds one");
+			var toRemove:Int = -1;
+			for (i => expr in watchList) {
+				ImGui.text('$expr = ${watchValues.get(expr) ?? "?"}');
+				ImGui.sameLine();
+				if (ImGui.smallButton('x##watch$i')) toRemove = i;
+			}
+			if (toRemove >= 0) watchList.splice(toRemove, 1);
+		}
+		ImGui.end();
+	}
+
+	/** Grid overlay over the game camera view - world-space lines every `gridSize` px. */
+	function drawGrid() {
+		if (!showGrid) return;
+		var cam = FlxG.camera;
+		if (cam == null) return;
+		var gs = gridSize > 0 ? gridSize : 64;
+		var drawList = ImGui.getBackgroundDrawList(ImGui.getMainViewport());
+
+		var vl = cam.viewMarginLeft, vt = cam.viewMarginTop;
+		var vr = cam.viewMarginRight, vb = cam.viewMarginBottom;
+		var x = Math.ceil(vl / gs) * gs;
+		while (x <= vr && x - vl < 100 * gs) {
+			var a = gizmo.toScreenPoint(FlxPoint.get(x, vt), cam, null);
+			var b = gizmo.toScreenPoint(FlxPoint.get(x, vb), cam, null);
+			drawList.addLine([a.x, a.y, b.x, b.y], 0x1EFFFFFF, 1);
+			a.put(); b.put();
+			x += gs;
+		}
+		var y = Math.ceil(vt / gs) * gs;
+		while (y <= vb && y - vt < 100 * gs) {
+			var a = gizmo.toScreenPoint(FlxPoint.get(vl, y), cam, null);
+			var b = gizmo.toScreenPoint(FlxPoint.get(vr, y), cam, null);
+			drawList.addLine([a.x, a.y, b.x, b.y], 0x1EFFFFFF, 1);
+			a.put(); b.put();
+			y += gs;
+		}
+	}
+
 	public function displayUI() {
 		// rebuild the scene tree at ~7Hz (or instantly when an edit marks it dirty)
 		if (objectsDirty || (objectsTimer -= FlxG.elapsed) <= 0) {
@@ -682,6 +806,7 @@ class ConsoleInspector {
 		if (ImGui.begin("State Editor", null, ImGuiWindowFlags.MenuBar)) {
 			showEditorMenuBar();
 			showNewStatePopup();
+			showSaveAsPopup();
 
 			if (ImGui.beginTabBar("##stateEditorTabs")) {
 				if (ImGui.beginTabItem("Scene", null, jumpToTab == 0 ? ImGuiTabItemFlags.SetSelected : 0)) {
@@ -874,6 +999,7 @@ class ConsoleInspector {
 			dl.addRectFilled([x0, y0, x1, y1], 0x33FFFFFF);
 			dl.addRect([x0, y0, x1, y1], 0xFFFFFFFF, 0, 1.5);
 		}
+		drawGrid();
 		drawKeyframeOverlays();
 		tickUndo(FlxG.elapsed);
 		tickKeyTracks(FlxG.elapsed);
@@ -1064,23 +1190,31 @@ class ConsoleInspector {
 				if (d.clickSelect != null) { clickSelect = d.clickSelect; clickSelectPtr.value = d.clickSelect; }
 				if (d.showKeyOverlay != null) { showKeyOverlay = d.showKeyOverlay; showKeyOverlayPtr.value = d.showKeyOverlay; }
 			if (d.showPerf != null) { showPerf = d.showPerf; showPerfPtr.value = d.showPerf; }
+			if (d.showWatch != null) { showWatch = d.showWatch; showWatchPtr.value = d.showWatch; }
+			if (d.showGrid != null) { showGrid = d.showGrid; showGridPtr.value = d.showGrid; }
 			}
 		} catch(e) {}
 		savedGizmoMode = gizmo.gizmoMode;
 		savedClickSelect = clickSelect;
 		savedKeyOverlay = showKeyOverlay;
 		savedShowPerf = showPerf;
+		savedShowWatch = showWatch;
+		savedShowGrid = showGrid;
 	}
 
 	/** Writes editor settings to FlxG.save when any tracked value changed since last write. */
 	function persistSettings() {
-		if (gizmo.gizmoMode == savedGizmoMode && clickSelect == savedClickSelect && showKeyOverlay == savedKeyOverlay && showPerf == savedShowPerf) return;
+		if (gizmo.gizmoMode == savedGizmoMode && clickSelect == savedClickSelect && showKeyOverlay == savedKeyOverlay
+			&& showPerf == savedShowPerf && showWatch == savedShowWatch && showGrid == savedShowGrid) return;
 		savedGizmoMode = gizmo.gizmoMode;
 		savedClickSelect = clickSelect;
 		savedKeyOverlay = showKeyOverlay;
 		savedShowPerf = showPerf;
+		savedShowWatch = showWatch;
+		savedShowGrid = showGrid;
 		try {
-			FlxG.save.data.sneEditor = {gizmoMode: gizmo.gizmoMode, clickSelect: clickSelect, showKeyOverlay: showKeyOverlay, showPerf: showPerf};
+			FlxG.save.data.sneEditor = {gizmoMode: gizmo.gizmoMode, clickSelect: clickSelect, showKeyOverlay: showKeyOverlay,
+				showPerf: showPerf, showWatch: showWatch, showGrid: showGrid};
 			FlxG.save.flush();
 		} catch(e) {}
 	}
@@ -1261,10 +1395,13 @@ class ConsoleInspector {
 		var nx = wp != null ? wp.x : (cam != null ? cam.scroll.x + FlxG.width / cam.zoom / 2 - 40 : 100);
 		var ny = wp != null ? wp.y : (cam != null ? cam.scroll.y + FlxG.height / cam.zoom / 2 - 40 : 100);
 		var s = new FlxSprite(nx, ny);
-		s.loadGraphic(path);
+		var short = shortImageKey(path);
+		var hasXml = short != null && Assets.exists(Paths.file('images/$short.xml'));
+		if (hasXml) s.frames = Paths.getSparrowAtlas(short);
+		else s.loadGraphic(path);
 		parent.add(s);
 		editorNames.set(s, varName);
-		var short = shortImageKey(path);
+		if (hasXml) patchSnippets.push({code: '$varName.frames = Paths.getSparrowAtlas("${escapeHaxe(short)}");', phase: 0});
 		addedObjects.push({
 			obj: s, varName: varName, typeName: "flixel.FlxSprite",
 			createCode: 'new flixel.FlxSprite($nx, $ny, ' + (short != null ? 'Paths.image("${escapeHaxe(short)}")' : '"${escapeHaxe(path)}"') + ')',
@@ -2790,13 +2927,14 @@ class ConsoleInspector {
 				buf.add('$expr.$op;\n');
 	}
 
-	function savePatch() {
+	function savePatch(?asName:String) {
 		#if sys
 		updateObjects(); // refresh in case displayUI hasn't run yet
 		var root = currentStateObjects[0];
 		var stateObj:FlxState = FlxG.state;
 		if (root != null && root.obj is FlxState) stateObj = cast root.obj;
-		var stateName = (stateObj is MusicBeatState) ? ((cast stateObj : MusicBeatState).scriptName ?? Type.getClassName(Type.getClass(stateObj)).split('.').pop()) : Type.getClassName(Type.getClass(stateObj)).split('.').pop();
+		var stateName = (asName != null && asName != "") ? asName
+			: (stateObj is MusicBeatState) ? ((cast stateObj : MusicBeatState).scriptName ?? Type.getClassName(Type.getClass(stateObj)).split('.').pop()) : Type.getClassName(Type.getClass(stateObj)).split('.').pop();
 		var base = resolvePatchLibraryPath();
 		if (base == null) { saveStatus = "No writable library"; Logs.error("State Editor: no writable asset library found"); return; }
 

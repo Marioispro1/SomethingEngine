@@ -215,6 +215,10 @@ class MusicBeatState extends FlxState implements IBeatCancellableReceiver
 		return false;
 	}
 
+	/** Logs a value to the dev console (F3); callable from state scripts as `state.debugLog(v)`. */
+	public function debugLog(v:Dynamic):Void
+		Logs.trace('${scriptName ?? Type.getClassName(Type.getClass(this))}: ${Std.string(v)}');
+
 	public function call(name:String, ?args:Array<Dynamic>, ?defaultVal:Dynamic):Dynamic {
 		// calls the function on the assigned script
 		if(stateScripts != null)
