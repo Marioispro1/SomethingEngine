@@ -162,35 +162,49 @@ class BuiltInCommands {
 					"https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
 					"https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 				];
-				var got = false;
+				var extracted = 0;
 				for (url in mirrors) {
 					try {
-						var bytes = HttpUtil.requestBytes(url);
-						sys.io.File.saveBytes(zipPath, bytes);
-						got = true;
-						break;
+						// curl (bundled in Windows 10+) handles CDN redirects properly; fall back to haxe.Http
+						var ok = false;
+						try {
+							var proc = new sys.io.Process("curl", ["-sSL", "-f", "-o", zipPath, url]);
+							var code = proc.exitCode();
+							proc.close();
+							ok = code == 0;
+						}
+						catch (e:Dynamic) {}
+						if (!ok) {
+							var bytes = HttpUtil.requestBytes(url);
+							sys.io.File.saveBytes(zipPath, bytes);
+						}
+						if (!sys.FileSystem.exists(zipPath) || sys.FileSystem.stat(zipPath).size < 10000000) {
+							Logs.trace('download from $url was suspiciously small, trying next mirror', WARNING);
+							continue;
+						}
+
+						var zip = ZipUtil.openZip(zipPath);
+						var gotHere = 0;
+						for (entry in zip.read()) {
+							var base = entry.fileName.toLowerCase().split("/").pop();
+							if (base != "ffmpeg.exe" && base != "ffprobe.exe") continue;
+							sys.io.File.saveBytes('$exeDir/$base', ZipUtil.unzip(entry));
+							gotHere++;
+						}
+						if (gotHere > 0) {
+							extracted = gotHere;
+							break;
+						}
+						Logs.trace('archive from $url contained no ffmpeg.exe, trying next mirror', WARNING);
 					}
 					catch (e:Dynamic) Logs.trace('ffmpeg mirror failed ($url): $e', WARNING);
-				}
-				if (!got) {
-					Logs.error("Every ffmpeg mirror failed - check your internet connection.");
-					return;
-				}
-
-				var extracted = 0;
-				var zip = ZipUtil.openZip(zipPath);
-				for (entry in zip.read()) {
-					var base = entry.fileName.toLowerCase().split("/").pop();
-					if (base != "ffmpeg.exe" && base != "ffprobe.exe") continue;
-					sys.io.File.saveBytes('$exeDir/$base', ZipUtil.unzip(entry));
-					extracted++;
 				}
 				try sys.FileSystem.deleteFile(zipPath) catch (e:Dynamic) {}
 
 				if (extracted > 0 && funkin.backend.system.VideoEncoder.recheck())
 					Logs.trace("ffmpeg is ready next to the exe - the video renderer works now.");
 				else
-					Logs.error("Download finished but no ffmpeg.exe was found in the archive.");
+					Logs.error("Every ffmpeg mirror failed - check your internet connection.");
 			}
 			catch (e:Dynamic) {
 				Logs.error('ffmpeg download failed: $e');
