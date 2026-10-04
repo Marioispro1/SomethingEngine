@@ -49,9 +49,9 @@ Files under `assets/` and folder-based mods are watched and reloaded live — no
 
 All shaders under `shaders/` are compiled once at startup (`ShaderPreload`), eliminating first-use hitches mid-song. Re-run anytime with the `preloadShaders` console command.
 
-### Console (F3)
+### Console (F2)
 
-Built-in commands for dev workflow: `loadSong`, `goToCharter`, `goToStageEditor`, `goToCharacterEditor`, `goToState <class>` (jump to any state), `switchMod`, `reloadState`, `reloadMod`, `endSong`, `pause`, `preloadShaders`, and full hscript eval with object inspection (`help <expr>`).
+Built-in commands for dev workflow: `loadSong`, `goToCharter`, `goToStageEditor`, `goToCharacterEditor`, `goToState <class>` (jump to any state), `switchMod`, `reloadState`, `reloadMod`, `endSong`, `pause`, `preloadShaders`, `downloadFFmpeg` (fetches ffmpeg next to the exe for the video renderer), `recordInputs` / `stopInputs` / `playInputs` (deterministic input capture + replay), and full hscript eval with object inspection (`help <expr>`).
 
 ---
 

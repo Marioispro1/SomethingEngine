@@ -396,7 +396,7 @@ class ConsoleInspector {
 				ImGui.menuItem("Del - delete selection, Del still types in text fields", null, false, false);
 				ImGui.menuItem("Double-click text - edit its text", null, false, false);
 				ImGui.menuItem("Drag keyframe marker - move key, right-click - key menu", null, false, false);
-				ImGui.menuItem("F3 - console, F4 - this window", null, false, false);
+				ImGui.menuItem("F2 - console, F4 - this window", null, false, false);
 				ImGui.endMenu();
 			}
 			ImGui.endMenuBar();
