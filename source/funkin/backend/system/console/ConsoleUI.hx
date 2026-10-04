@@ -245,6 +245,7 @@ class ConsoleUI {
 		if (!Options.devMode) {
 			if (active) toggleUI();
 			if (inspectorActive) toggleInspector();
+			FlxG.mouse.enabled = true;
 			return;
 		}
 		
@@ -263,7 +264,20 @@ class ConsoleUI {
 			if (ImGui.isKeyPressed(key.toImGuiKey(), false)) toggledInspector = true;
 		}
 		if (toggledInspector) toggleInspector();
-		if (inspectorActive) consoleInspector.displayUI();
+
+		// game-side mouse input stays dead while the editor is open; ImGui feeds the editor
+		// directly (position still updates). Set per-frame so it can't get stuck disabled.
+		FlxG.mouse.enabled = !inspectorActive;
+
+		if (inspectorActive) {
+			try {
+				consoleInspector.displayUI();
+			} catch (e:Dynamic) {
+				inspectorActive = false;
+				FlxG.mouse.enabled = true;
+				Logs.warn('State editor crashed and was closed: $e');
+			}
+		}
 
 		if (!active) return;
 

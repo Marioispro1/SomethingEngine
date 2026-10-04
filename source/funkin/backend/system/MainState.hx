@@ -166,6 +166,10 @@ class MainState extends FlxState {
 		if (Flags.PRELOAD_SHADERS)
 			funkin.backend.shaders.ShaderPreload.preloadAll();
 
+		#if sys
+		AssetWatcher.init();
+		#end
+
 		if (!initiated) {
 			if (Main.goToSong != null) {
 				if (Main.goToCharter) FlxG.switchState(new funkin.editors.charter.Charter(Main.goToSong, Main.goToDifficulty, Main.goToVariation));

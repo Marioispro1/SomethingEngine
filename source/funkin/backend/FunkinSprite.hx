@@ -159,12 +159,12 @@ class FunkinSprite extends FlxAnimate implements IBeatReceiver implements IOffse
 	private var countedBeat = 0;
 	public function beatHit(curBeat:Int)
 	{
-		if(!animEnabled) return;
+		if(!animEnabled || beatAnims == null) return;
 		if (lastAnimContext != LOCK && beatAnims.length > 0 && (curBeat + beatOffset) % beatInterval == 0)
 		{
 			// TODO: find a solution without countedBeat
 			var anim = beatAnims[FlxMath.wrap(countedBeat++, 0, beatAnims.length - 1)];
-			if (anim.name != null && anim.name != "null" && anim.name != "none")
+			if (anim != null && anim.name != null && anim.name != "null" && anim.name != "none")
 				playAnim(anim.name, anim.forced);
 		}
 	}

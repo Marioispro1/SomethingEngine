@@ -24,6 +24,11 @@ class EditorPicker extends MusicBeatSubstate {
 			state: funkin.editors.stage.StageSelection
 		},
 		{
+			name: "Video Renderer",
+			id: "render",
+			state: funkin.editors.render.VideoRenderSelection
+		},
+		{
 			name: "Alphabet Editor",
 			id: "alphabet",
 			state: funkin.editors.alphabet.AlphabetSelection

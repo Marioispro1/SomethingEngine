@@ -34,9 +34,9 @@ class InspectorGizmo {
 	var moveSpeedPos:Float = 1;
 	var moveSpeedScale:Float = 0.05;
 
-	var snapPos:Float = 50;
-	var snapAngle:Float = 15;
-	var snapScale:Float = 0.25;
+	public var snapPos:Float = 50;
+	public var snapAngle:Float = 15;
+	public var snapScale:Float = 0.25;
 
 	public function new() {}
 
@@ -68,6 +68,25 @@ class InspectorGizmo {
 		point.x *= camera.zoom;
 		point.y *= camera.zoom;
 		transformFlxPointToWindowSpace(point);
+		return point;
+	}
+
+	/**
+	 * Inverse of `toScreenPoint`: transforms `point` (main-viewport window
+	 * coords, e.g. ImGui.getMousePos()) into world coords on `camera`.
+	 */
+	public function screenToWorldPoint(point:FlxPoint, camera:FlxCamera, ?scrollFactor:FlxPoint) {
+		if ((ImGuiIO.configFlags & ImGuiConfigFlags.ViewportsEnable) != 0) {
+			point.x = (point.x - (Lib.application.window.x + FlxG.scaleMode.offset.x)) / FlxG.scaleMode.scale.x;
+			point.y = (point.y - (Lib.application.window.y + FlxG.scaleMode.offset.y)) / FlxG.scaleMode.scale.y;
+		} else {
+			point.x = (point.x - FlxG.scaleMode.offset.x) / FlxG.scaleMode.scale.x;
+			point.y = (point.y - FlxG.scaleMode.offset.y) / FlxG.scaleMode.scale.y;
+		}
+		var sfx = scrollFactor != null ? scrollFactor.x : 1.0;
+		var sfy = scrollFactor != null ? scrollFactor.y : 1.0;
+		point.x = point.x / camera.zoom + camera.viewMarginLeft * sfx;
+		point.y = point.y / camera.zoom + camera.viewMarginTop * sfy;
 		return point;
 	}
 

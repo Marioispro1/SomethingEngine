@@ -355,7 +355,14 @@ final class Conductor
 		reset();
 	}
 
+	public static var timeSource:Void->Float = null;
+
 	private static function __updateSongPos(elapsed:Float) {
+		if (timeSource != null) {
+			lastSongPos = timeSource();
+			songPosition = lastSongPos + songOffset;
+			return;
+		}
 		if (FlxG.sound.music != null) { // SNE FlxSound is Interpolated.
 			lastSongPos = FlxG.sound.music.time - songOffset;
 			if (FlxG.sound.music.playing) songPosition = FlxG.sound.music.time;

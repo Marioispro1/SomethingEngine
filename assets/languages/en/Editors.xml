@@ -36,6 +36,7 @@
 		<str id="chart.name">Chart Editor</str>
 		<str id="character.name">Character Editor</str>
 		<str id="stage.name">Stage Editor</str>
+		<str id="render.name">Video Renderer</str>
 		<str id="uiDebug.name">UI Debug State</str>
 		<str id="wiki.name">Wiki</str>
 		<str id="debugOptions.name">Debug Options</str>
@@ -464,6 +465,54 @@
 				<str id="char-exists-title">Creating Character: Error!</str>
 				<str id="char-exists-body">The character you are trying to create already exists, if you would like to override it delete the character first!</str>
 			</group>
+		</group>
+	</group>
+
+	<group name="VideoRenderer">
+		<group name="VideoRenderSelection" prefix="videoRenderSelection.">
+			<str id="desc">Select a song to render out to video.</str>
+			<str id="desc-folder">Select a song to render out to video in {0}</str>
+			<str id="acceptFolder">Press ACCEPT to browse this folder.</str>
+			<str id="acceptSong">Press ACCEPT to choose a difficulty to render.</str>
+			<str id="acceptVariation">Press ACCEPT to choose a song variation to render.</str>
+			<str id="acceptDifficulty">Press ACCEPT to set up the render for the selected difficulty.</str>
+			<str id="selectDifficulty">Select a difficulty to continue.</str>
+		</group>
+
+		<group name="VideoRenderSettingsScreen" prefix="videoRender.">
+			<str id="title">Render Video</str>
+			<str id="details">BPM {0} - chart ends at {1}</str>
+			<str id="fps">Frame Rate</str>
+			<str id="resolution">Render Size</str>
+			<str id="resolutionHint">up to {0} x {1}</str>
+			<str id="start">Start (seconds)</str>
+			<str id="end">End (seconds)</str>
+			<str id="endHint">0 = end of song</str>
+			<str id="countdown">Render the countdown</str>
+			<str id="botplay">Botplay (nobody is at the keyboard)</str>
+			<str id="uncapped">Run as fast as this machine can</str>
+			<str id="explainer">No audio plays while rendering: the song is simulated from a frame counter instead of the music clock, so the result is smooth however slowly the game runs. The song's audio is mixed in by ffmpeg afterwards. Press ESC during a render to stop it.</str>
+			<str id="output">Writes to: {0}</str>
+			<str id="render">Render</str>
+
+			<group name="Resolutions" prefix="res.">
+				<str id="window">Current window</str>
+				<str id="display">(display)</str>
+			</group>
+
+			<group name="Problems" prefix="problems.">
+				<str id="ffmpeg">ffmpeg was not found on PATH, so nothing can be encoded.</str>
+				<str id="range">End has to come after start.</str>
+				<str id="fps">Frame rate has to be above zero.</str>
+			</group>
+		</group>
+
+		<group name="VideoRenderResultScreen" prefix="videoRenderResult.">
+			<str id="title">Render Finished</str>
+			<str id="titleFailed">Render Failed</str>
+			<str id="titleIncomplete">Render Incomplete</str>
+			<str id="failed">Nothing was written.</str>
+			<str id="openFolder">Open Folder</str>
 		</group>
 	</group>
 

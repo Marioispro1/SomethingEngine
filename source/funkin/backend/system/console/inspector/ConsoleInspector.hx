@@ -132,6 +132,57 @@ class ConsoleInspector {
 	/** Set when the mouse interacted with a keyframe marker this frame (blocks scene click-select). */
 	var keyMouseConsumed:Bool = false;
 
+	/** Scene object(s) being moved by dragging directly with the mouse, if any. */
+	var sceneDrag:{obj:FlxObject, cam:FlxCamera, offX:Float, offY:Float, moved:Bool, others:Array<{o:FlxObject, dx:Float, dy:Float}>} = null;
+
+	/** In-scene text edit state, opened by double-clicking a FlxText. */
+	var textEditTarget:FlxText = null;
+	var textEditOpen = new ImGuiBoolPtr(false);
+	var textEditPtr:ImGuiStringPtr = null;
+	var textEditDirty:Bool = false;
+	var textEditJustOpened:Bool = false;
+	var textEditX:Float = 0;
+	var textEditY:Float = 0;
+
+	/** Extra objects added to the selection with Ctrl+click (selectedObject stays the primary). */
+	var selectedObjects:Array<FlxBasic> = [];
+
+	/** Clipboard spec for Ctrl+C/V object copy-paste. */
+	var clipboard:Dynamic = null;
+
+	/** Named session snapshots, independent of the undo stack. */
+	var namedSnapshots:Map<String, InspectorSnapshot> = [];
+	var snapshotName = new ImGuiStringPtr("checkpoint");
+	var snapshotPick = new ImGuiIntPtr(0);
+
+	/** State layer filter for the tree + scene picking (0 = all, 1+ = FlxG.state/substates). */
+	var stateLayerPtr = new ImGuiIntPtr(0);
+
+	/** Song scrub slider (PlayState only). */
+	var songScrubPtr = new ImGuiFloatPtr(0);
+
+	/** Motion bake state: records an object's live pose into a key track. */
+	public var baking:{obj:FlxBasic, keys:Array<InspectorKeyframe>, t:Float, nextT:Float, dur:Float} = null;
+	static inline var BAKE_STEP:Float = 0.05;
+
+	/** Right-click keyframe context menu target. */
+	var keyCtx:{obj:FlxBasic, index:Int} = null;
+	var keyCtxTimePtr = new ImGuiFloatPtr(0);
+	var keyCtxEasePtr = new ImGuiIntPtr(0);
+
+	/** Snapshot taken right after adopting the state's patch; basis for the "changes" list. */
+	var adoptSnapshot:InspectorSnapshot = null;
+
+	/** Sound preview window state. */
+	var soundPreviewOpen = new ImGuiBoolPtr(false);
+	var soundPreviewList:Array<String> = null;
+	var soundPreviewFilter = new ImGuiStringPtr("");
+	var previewSound:flixel.sound.FlxSound = null;
+	var previewWave:Array<Float> = null;
+	var previewWaveDur:Float = 0;
+	var previewWavePath:String = null;
+	var previewStatus:String = "";
+
 	/** Force window pos/size for one frame (clears stale docking positions). */
 	public var forceLayout:Bool = false;
 
@@ -272,8 +323,18 @@ class ConsoleInspector {
 				if (ImGui.menuItem("Undo", "Ctrl+Z")) doUndo();
 				if (ImGui.menuItem("Redo", "Ctrl+Y")) doRedo();
 				ImGui.separator();
+				if (ImGui.menuItem("Copy", "Ctrl+C", false, selectedObject != null)) copySelected();
+				if (ImGui.menuItem("Paste", "Ctrl+V", false, clipboard != null)) pasteClipboard();
+				if (ImGui.menuItem("Cut", "Ctrl+X", false, selectedObject != null)) {
+					copySelected();
+					for (o in selectionList()) deleteInspectorObject(o);
+				}
 				if (ImGui.menuItem("Duplicate", "Ctrl+D", false, selectedObject != null)) duplicateObject(cast selectedObject);
-				if (ImGui.menuItem("Delete", "Del", false, selectedObject != null)) deleteInspectorObject(cast selectedObject);
+				if (ImGui.menuItem("Delete", "Del", false, selectedObject != null)) {
+					var sel = selectionList();
+					if (sel.length > 1) for (o in sel) deleteInspectorObject(o);
+					else deleteInspectorObject(cast selectedObject);
+				}
 				ImGui.separator();
 				if (ImGui.menuItem("Reload State Scripts")) reloadStateScripts();
 				if (ImGui.menuItem("Save Patch", "Ctrl+S")) savePatch();
@@ -288,6 +349,7 @@ class ConsoleInspector {
 			}
 			if (ImGui.beginMenu("View")) {
 				if (ImGui.menuItem("Object Properties")) objectProperties.isOpen.value = true;
+				if (ImGui.menuItem("Sound Preview", null, soundPreviewOpen.value)) soundPreviewOpen.value = !soundPreviewOpen.value;
 				if (ImGui.menuItem("Reset Layout")) {
 					forceLayout = true;
 					objectProperties.isOpen.value = true;
@@ -300,8 +362,12 @@ class ConsoleInspector {
 			if (ImGui.beginMenu("Help")) {
 				ImGui.menuItem("Q/W/E/R - none/move/rotate/scale gizmo", null, false, false);
 				ImGui.menuItem("Ctrl while dragging - snap", null, false, false);
-				ImGui.menuItem("Click in scene - select object", null, false, false);
-				ImGui.menuItem("Drag keyframe marker - move key", null, false, false);
+				ImGui.menuItem("Click in scene - select object, drag - move it", null, false, false);
+				ImGui.menuItem("Ctrl+click - add/remove from selection, drag moves all", null, false, false);
+				ImGui.menuItem("Ctrl+C/X/V - copy, cut, paste objects", null, false, false);
+				ImGui.menuItem("Del - delete selection, Del still types in text fields", null, false, false);
+				ImGui.menuItem("Double-click text - edit its text", null, false, false);
+				ImGui.menuItem("Drag keyframe marker - move key, right-click - key menu", null, false, false);
 				ImGui.menuItem("F3 - console, F4 - this window", null, false, false);
 				ImGui.endMenu();
 			}
@@ -388,6 +454,67 @@ class ConsoleInspector {
 		var base = resolvePatchLibraryPath();
 		ImGui.textWrapped("Target: " + (base != null ? base + "data/states/" : "no writable library"));
 		#end
+		if (ImGui.collapsingHeader("Changes##export")) {
+			var diffs = diffFromBaseline();
+			if (diffs.length == 0) ImGui.text("No changes since this state was adopted.");
+			else {
+				if (ImGui.beginChild("##diffList", 0, 150, ImGuiChildFlags.Borders))
+					for (d in diffs) ImGui.textWrapped(d);
+				ImGui.endChild();
+			}
+		}
+	}
+
+	function nameForObject(o:FlxBasic):String {
+		var n = editorNames.get(o);
+		if (n != null) return n;
+		var d = findInspectorObjectFor(o);
+		return d != null ? d.name : Type.getClassName(Type.getClass(o));
+	}
+
+	/** Diffs the current scene against the post-adoption snapshot; returns display lines. */
+	function diffFromBaseline():Array<String> {
+		var out:Array<String> = [];
+		if (adoptSnapshot == null) return out;
+		var cur = captureSnapshot();
+		for (o => p in adoptSnapshot.props) {
+			var nm = nameForObject(o);
+			var q = cur.props.get(o);
+			if (q == null) { out.push('- $nm (removed)'); continue; }
+			var diffs:Array<String> = [];
+			if (p.x != q.x) diffs.push('x ${FlxMath.roundDecimal(p.x,1)}->${FlxMath.roundDecimal(q.x,1)}');
+			if (p.y != q.y) diffs.push('y ${FlxMath.roundDecimal(p.y,1)}->${FlxMath.roundDecimal(q.y,1)}');
+			if (p.angle != q.angle) diffs.push('angle ${FlxMath.roundDecimal(p.angle,1)}->${FlxMath.roundDecimal(q.angle,1)}');
+			if (p.scaleX != q.scaleX || p.scaleY != q.scaleY) diffs.push('scale');
+			if (p.alpha != q.alpha) diffs.push('alpha ${FlxMath.roundDecimal(p.alpha,2)}->${FlxMath.roundDecimal(q.alpha,2)}');
+			if (p.color != q.color) diffs.push('color');
+			if (p.visible != q.visible) diffs.push(q.visible ? 'shown' : 'hidden');
+			if (diffs.length > 0) out.push('~ $nm: ${diffs.join(", ")}');
+		}
+		for (o => p in cur.props)
+			if (!adoptSnapshot.props.exists(o) && editorNames.exists(o)) out.push('+ ${nameForObject(o)}');
+		for (o => h in objectHooks) {
+			var old = adoptSnapshot.hooks.get(o);
+			if (old == null) {
+				if (h.clickCode != "" || h.updateCode != "") out.push('+ ${nameForObject(o)} hooks');
+			} else if (old.c != h.clickCode || old.u != h.updateCode)
+				out.push('~ ${nameForObject(o)} hooks');
+		}
+		for (o => tr in keyTracks) {
+			var old = adoptSnapshot.tracks.get(o);
+			var nm = nameForObject(o);
+			if (old == null) { if (tr.keys.length > 0) out.push('+ $nm keyframes (${tr.keys.length})'); continue; }
+			var same = old.mode == tr.mode && old.keys.length == tr.keys.length;
+			if (same)
+				for (i in 0...old.keys.length) {
+					var a = old.keys[i], b = tr.keys[i];
+					if (a.t != b.t || a.x != b.x || a.y != b.y || a.angle != b.angle || a.scaleX != b.scaleX
+						|| a.scaleY != b.scaleY || a.alpha != b.alpha || a.ease != b.ease) { same = false; break; }
+				}
+			if (!same) out.push('~ $nm keyframes (${tr.keys.length})');
+		}
+		for (e in removedExpressions) out.push('- $e (deleted)');
+		return out;
 	}
 
 	function listScriptedStates():Array<String> {
@@ -462,22 +589,91 @@ class ConsoleInspector {
 					if (ImGui.selectable("Position (W)", gizmo.gizmoMode == 0)) gizmo.gizmoMode = 0;
 					if (ImGui.selectable("Rotation (E)", gizmo.gizmoMode == 1)) gizmo.gizmoMode = 1;
 					if (ImGui.selectable("Scale (R)", gizmo.gizmoMode == 2)) gizmo.gizmoMode = 2;
-					ImGui.checkbox("Click scene to select##pick", clickSelectPtr);
+					ImGui.checkbox("Click/drag scene objects##pick", clickSelectPtr);
 					clickSelect = clickSelectPtr.value;
 					ImGui.checkbox("Show keyframes##pick", showKeyOverlayPtr);
 					showKeyOverlay = showKeyOverlayPtr.value;
 					ImGui.unindent();
+
+					if (currentStateObjects.length > 1) {
+						var layerNames = ["All layers"];
+						for (o in currentStateObjects) layerNames.push(o.name);
+						if (stateLayerPtr.value >= layerNames.length) stateLayerPtr.value = 0;
+						ImGui.setNextItemWidth(-1);
+						ImGui.combo("##stateLayer", stateLayerPtr, layerNames);
+						if (ImGui.isItemHovered()) ImGui.setTooltip("limit the tree + scene clicks to one state/substate");
+					}
+
+					if (selectedObjects.length > 0) {
+						ImGui.separatorText('${selectionList().length} selected');
+						if (ImGui.smallButton("L##al")) alignSelection("l");
+						ImGui.sameLine(); if (ImGui.smallButton("CX##al")) alignSelection("cx");
+						ImGui.sameLine(); if (ImGui.smallButton("R##al")) alignSelection("r");
+						ImGui.sameLine(); if (ImGui.smallButton("T##al")) alignSelection("t");
+						ImGui.sameLine(); if (ImGui.smallButton("CY##al")) alignSelection("cy");
+						ImGui.sameLine(); if (ImGui.smallButton("B##al")) alignSelection("b");
+						ImGui.sameLine(); if (ImGui.smallButton("Dist H##al")) alignSelection("dh");
+						ImGui.sameLine(); if (ImGui.smallButton("Dist V##al")) alignSelection("dv");
+						if (ImGui.isItemHovered()) ImGui.setTooltip("spread selected objects evenly");
+					}
+
+					if (ImGui.collapsingHeader("Snapshots##snap")) {
+						ImGui.setNextItemWidth(150);
+						ImGui.inputTextWithHint("##snapName", "snapshot name", snapshotName);
+						ImGui.sameLine();
+						if (ImGui.smallButton("Save##snap")) {
+							namedSnapshots.set(snapshotName.value, captureSnapshot());
+							runStatus = 'Snapshot "${snapshotName.value}" saved';
+						}
+						var snapNames = [for (n in namedSnapshots.keys()) n];
+						if (snapNames.length > 0) {
+							snapNames.sort(function(a, b) return a < b ? -1 : (a > b ? 1 : 0));
+							if (snapshotPick.value >= snapNames.length) snapshotPick.value = 0;
+							ImGui.setNextItemWidth(150);
+							ImGui.combo("##snapPick", snapshotPick, snapNames);
+							if (snapshotPick.value < snapNames.length) {
+								var nm = snapNames[snapshotPick.value];
+								ImGui.sameLine();
+								if (ImGui.smallButton("Restore##snap")) {
+									applySnapshot(namedSnapshots.get(nm));
+									runStatus = 'Restored "$nm"';
+								}
+								ImGui.sameLine();
+								if (ImGui.smallButton("x##snap")) namedSnapshots.remove(nm);
+							}
+						}
+					}
+
+					if (FlxG.state is funkin.game.PlayState && ImGui.collapsingHeader("Song##scrub")) {
+						var ps:funkin.game.PlayState = cast FlxG.state;
+						if (ps.inst != null && ps.inst.length > 0) {
+							songScrubPtr.value = Conductor.songPosition / 1000;
+							ImGui.setNextItemWidth(-1);
+							if (ImGui.sliderFloat("##songScrub", songScrubPtr, 0, ps.inst.length / 1000, "%.1fs")) {
+								var ms = songScrubPtr.value * 1000;
+								try {
+									ps.inst.time = ms;
+									if (ps.vocals != null) ps.vocals.time = ms;
+									Conductor.songPosition = ms;
+								} catch(e) runStatus = 'Seek failed: $e';
+							}
+							if (ImGui.isItemHovered()) ImGui.setTooltip("scrub the song position (dev tool)");
+						}
+					}
+
 					ImGui.separatorText("Scene Tree");
 					ImGui.setNextItemWidth(-1);
 					ImGui.inputTextWithHint("##treeFilter", "Filter objects...", treeFilter);
 					for (index => member in currentStateObjects) {
+						if (stateLayerPtr.value > 0 && index != stateLayerPtr.value - 1) continue;
 						if (treeFilterActive() && !treeMatch(member)) continue;
 						var nodeID = member.name + index;
 						var flags = ImGuiTreeNodeFlags.DefaultOpen;
-						if (member.obj == selectedObject) flags |= ImGuiTreeNodeFlags.Selected;
+						if (member.obj == selectedObject || (member.obj is FlxBasic && selectedObjects.contains(cast member.obj)))
+							flags |= ImGuiTreeNodeFlags.Selected;
 						if (ImGui.treeNodeEx(nodeID, flags, member.name + " (" + member.type + ")")) {
 							if (ImGui.isItemClicked()) {
-								selectObject(member.obj);
+								selectObject(member.obj, ImGui.isKeyDown(ImGuiKey.LeftCtrl) || ImGui.isKeyDown(ImGuiKey.RightCtrl));
 							}
 							showNodeExtras(member);
 							if (member.members.length > 0) {
@@ -536,10 +732,186 @@ class ConsoleInspector {
 			}
 		}
 
+		drawTextEdit();
+		drawSoundPreview();
 		drawKeyframeOverlays();
 		tickUndo(FlxG.elapsed);
 		tickKeyTracks(FlxG.elapsed);
 		runObjectHooks();
+	}
+
+	/** Floating in-scene text edit window; opened by double-clicking a FlxText. Edits apply live. */
+	function drawTextEdit() {
+		if (textEditTarget == null) return;
+
+		var close = !isAliveInScene(textEditTarget);
+		if (!close) {
+			if (textEditJustOpened) ImGui.setNextWindowPos(textEditX, textEditY, ImGuiCond.Appearing);
+			ImGui.setNextWindowSize(340, 0, ImGuiCond.Appearing);
+			if (ImGui.begin("Edit Text##sceneTextEdit", textEditOpen,
+				ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.AlwaysAutoResize)) {
+				var name = editorNames.get(textEditTarget) ?? findInspectorObjectFor(textEditTarget)?.name;
+				if (name != null) ImGui.text(name);
+				if (textEditJustOpened) {
+					ImGui.setKeyboardFocusHere();
+					textEditJustOpened = false;
+				}
+				if (ImGui.inputTextMultiline("##sceneTextEditInput", textEditPtr, 320, 120)) {
+					textEditTarget.text = textEditPtr.value;
+					textEditDirty = true;
+				}
+				if (ImGui.button("Done##sceneTextEdit")) close = true;
+				if (ImGui.isWindowFocused(ImGuiFocusedFlags.RootAndChildWindows) && ImGui.isKeyPressed(ImGuiKey.Escape))
+					close = true;
+			}
+			ImGui.end();
+			if (!textEditOpen.value) close = true;
+		}
+
+		if (close) {
+			if (textEditDirty) markEdited(textEditTarget);
+			textEditTarget = null;
+			textEditOpen.value = false;
+		}
+	}
+
+	// ============ SOUND PREVIEW ============
+
+	function drawSoundPreview() {
+		#if sys
+		if (!soundPreviewOpen.value) {
+			stopSoundPreview();
+			return;
+		}
+		if (soundPreviewList == null) {
+			soundPreviewList = [];
+			var seen:Map<String, Bool> = [];
+			for (folder in ["sounds", "music"]) {
+				for (f in Paths.assetsTree.getFiles('assets/$folder')) {
+					var lower = f.toLowerCase();
+					if (!(lower.endsWith(".ogg") || lower.endsWith(".wav") || lower.endsWith(".mp3"))) continue;
+					var id = '$folder/$f';
+					if (seen.exists(id)) continue;
+					seen.set(id, true);
+					soundPreviewList.push(id);
+				}
+			}
+			soundPreviewList.sort(function(a, b) return a < b ? -1 : (a > b ? 1 : 0));
+		}
+		ImGui.setNextWindowSize(340, 430, ImGuiCond.FirstUseEver);
+		if (ImGui.begin("Sound Preview##snd", soundPreviewOpen)) {
+			ImGui.setNextItemWidth(-1);
+			ImGui.inputTextWithHint("##sndFilter", "filter...", soundPreviewFilter);
+			var filter = StringTools.trim(soundPreviewFilter.value).toLowerCase();
+			if (ImGui.beginChild("##sndList", 0, 240)) {
+				for (s in soundPreviewList) {
+					if (filter != "" && s.toLowerCase().indexOf(filter) == -1) continue;
+					if (ImGui.selectable(s, previewWavePath == s)) {
+						previewWavePath = s;
+						loadWaveform(s);
+					}
+				}
+			}
+			ImGui.endChild();
+			if (previewWavePath != null) {
+				ImGui.text(previewWavePath + (previewWaveDur > 0 ? '  (${FlxMath.roundDecimal(previewWaveDur, 2)}s)' : ""));
+				drawWaveform();
+				if (ImGui.button("Play##snd")) playSoundPreview();
+				ImGui.sameLine();
+				if (ImGui.button("Stop##snd")) stopSoundPreview();
+			}
+			if (previewStatus != "") ImGui.textWrapped(previewStatus);
+		}
+		ImGui.end();
+		#end
+	}
+
+	function loadWaveform(id:String) {
+		previewWave = null;
+		previewWaveDur = 0;
+		previewStatus = "";
+		#if sys
+		var path = Paths.assetsTree.getSpecificPath('assets/$id');
+		if (path == null) { previewStatus = 'No file for $id'; return; }
+		try {
+			var buf = lime.media.AudioBuffer.fromFile(path);
+			if (buf == null || buf.data == null || buf.channels <= 0) { previewStatus = "Couldn't decode audio"; return; }
+			var bytesPerFrame = Std.int(buf.channels * (buf.bitsPerSample / 8));
+			if (bytesPerFrame <= 0) { previewStatus = "Unknown audio format"; return; }
+			var frames = Std.int(buf.data.length / bytesPerFrame);
+			previewWaveDur = buf.sampleRate > 0 ? frames / buf.sampleRate : 0;
+			var data = buf.data;
+			var cols = 160;
+			var peaks:Array<Float> = [];
+			for (i in 0...cols) {
+				var lo = Std.int(i / cols * frames);
+				var hi = Std.int((i + 1) / cols * frames);
+				if (hi <= lo) hi = lo + 1;
+				var step = Std.int(Math.max(1, (hi - lo) / 40));
+				var peak = 0.0;
+				var j = lo;
+				while (j < hi) {
+					var off = j * bytesPerFrame;
+					if (off + 1 < data.length) {
+						var v = 0.0;
+						if (buf.bitsPerSample == 16) {
+							var s16 = (data[off + 1] << 8) | data[off];
+							if (s16 >= 32768) s16 -= 65536;
+							v = Math.abs(s16 / 32768);
+						} else if (buf.bitsPerSample == 8) {
+							v = Math.abs((data[off] - 128) / 128);
+						}
+						if (v > peak) peak = v;
+					}
+					j += step;
+				}
+				peaks.push(peak);
+			}
+			previewWave = peaks;
+		} catch(e) {
+			previewStatus = 'Decode failed: $e';
+		}
+		#end
+	}
+
+	function drawWaveform() {
+		if (previewWave == null || previewWave.length == 0) return;
+		var dl = ImGui.getWindowDrawList();
+		var pos = ImGui.getCursorScreenPos();
+		var w = ImGui.getContentRegionAvail().x;
+		var h = 56.0;
+		dl.addRectFilled([pos.x, pos.y, pos.x + w, pos.y + h], 0x33000000, 2);
+		var cols = previewWave.length;
+		var barW = Math.max(1, w / cols * 0.7);
+		for (i in 0...cols) {
+			var px = pos.x + (i + 0.5) / cols * w;
+			var hh = Math.max(2, previewWave[i] * h);
+			dl.addLine([px, pos.y + h / 2 - hh / 2, px, pos.y + h / 2 + hh / 2], 0xFF5EC9FF, barW);
+		}
+		ImGui.dummy(w, h);
+	}
+
+	function playSoundPreview() {
+		#if sys
+		stopSoundPreview();
+		var path = Paths.assetsTree.getSpecificPath('assets/$previewWavePath');
+		if (path == null) return;
+		try {
+			var snd = openfl.media.Sound.fromFile(path);
+			if (snd != null) {
+				previewSound = FlxG.sound.load(snd);
+				previewSound.play();
+			}
+		} catch(e) previewStatus = 'Play failed: $e';
+		#end
+	}
+
+	function stopSoundPreview() {
+		if (previewSound != null) {
+			previewSound.stop();
+			previewSound.destroy();
+			previewSound = null;
+		}
 	}
 
 	function checkForSelectedObjectThisFrame(object:InspectorObject) {
@@ -573,10 +945,11 @@ class ConsoleInspector {
 			var nodeID = id + object.name + index;
 			var flags = treeFilterActive() ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
 			if (member.members.length == 0) flags |= ImGuiTreeNodeFlags.Leaf;
-			if (valid && member.obj == selectedObject) flags |= ImGuiTreeNodeFlags.Selected;
+			if (valid && (member.obj == selectedObject || (member.obj is FlxBasic && selectedObjects.contains(cast member.obj))))
+				flags |= ImGuiTreeNodeFlags.Selected;
 			if (ImGui.treeNodeEx(nodeID, flags, member.name + (valid ? " (" + member.type + ")" : ""))) {
 				if (valid && ImGui.isItemClicked()) {
-					selectObject(member.obj);
+					selectObject(member.obj, ImGui.isKeyDown(ImGuiKey.LeftCtrl) || ImGui.isKeyDown(ImGuiKey.RightCtrl));
 				}
 				if (valid) showNodeExtras(member);
 				if (valid && member.members.length > 0) {
@@ -638,11 +1011,35 @@ class ConsoleInspector {
 		markEdited(obj);
 	}
 
-	function selectObject(obj:Dynamic) {
-		if (selectedObject != obj) {
-			selectedObject = obj;
+	function selectObject(obj:Dynamic, additive:Bool = false) {
+		if (additive && obj is FlxBasic) {
+			var b:FlxBasic = cast obj;
+			if (selectedObjects.contains(b)) {
+				selectedObjects.remove(b);
+				if (selectedObject == b && selectedObjects.length > 0)
+					selectedObject = selectedObjects[selectedObjects.length - 1];
+			} else {
+				if (selectedObject is FlxBasic && !selectedObjects.contains(cast selectedObject))
+					selectedObjects.push(cast selectedObject);
+				if (!selectedObjects.contains(b)) selectedObjects.push(b);
+				selectedObject = b;
+			}
 			justChangedObject = true;
+		} else {
+			selectedObjects.resize(0);
+			if (selectedObject != obj) {
+				selectedObject = obj;
+				justChangedObject = true;
+			}
 		}
+	}
+
+	/** Primary selection + Ctrl-clicked extras, in click order. */
+	function selectionList():Array<FlxBasic> {
+		var out = selectedObjects.copy();
+		if (selectedObject is FlxBasic && !out.contains(cast selectedObject))
+			out.push(cast selectedObject);
+		return out;
 	}
 
 	// ============ STATE EDITOR METHODS ============
@@ -830,6 +1227,132 @@ class ConsoleInspector {
 		selectObject(copy);
 	}
 
+	/** Snapshots the selected object's editable props for Ctrl+V pasting. */
+	public function copySelected() {
+		var b:FlxBasic = selectedObject is FlxBasic ? cast selectedObject : null;
+		if (b == null) { runStatus = "Nothing selected"; return; }
+		var o:FlxObject = b is FlxObject ? cast b : null;
+		var s:FlxSprite = b is FlxSprite ? cast b : null;
+		var t:FlxText = b is FlxText ? cast b : null;
+		clipboard = {
+			kind: t != null ? 2 : (s != null ? 1 : (b is FlxGroup ? 3 : 0)),
+			x: o != null ? o.x : 0, y: o != null ? o.y : 0, angle: o != null ? o.angle : 0,
+			alpha: s != null ? s.alpha : 1, color: s != null ? s.color : 0xFFFFFFFF,
+			sx: s != null ? s.scale.x : 1, sy: s != null ? s.scale.y : 1,
+			w: o != null ? o.width : 0, h: o != null ? o.height : 0,
+			scrollX: o != null ? o.scrollFactor.x : 1, scrollY: o != null ? o.scrollFactor.y : 1,
+			visible: b.visible,
+			text: t != null ? t.text : "", size: t != null ? t.size : 24,
+			fieldW: t != null ? t.fieldWidth : 0, fieldH: t != null ? t.fieldHeight : 0,
+			graphKey: s != null && s.graphic != null ? s.graphic.key : null
+		};
+		runStatus = "Copied";
+	}
+
+	/** `assets/images/x.png` -> `x` for Paths.image() calls; null if the key isn't an images/ asset. */
+	static function shortImageKey(key:String):Null<String> {
+		if (key == null || !key.startsWith('assets/images/')) return null;
+		var k = key.substr(14);
+		var dot = k.lastIndexOf('.');
+		return dot == -1 ? k : k.substr(0, dot);
+	}
+
+	/** Creates a new object from the Ctrl+C snapshot, offset so it doesn't overlap the source. */
+	public function pasteClipboard() {
+		var c = clipboard;
+		if (c == null) { runStatus = "Clipboard empty"; return; }
+		var parent = getEditParent();
+		var varName = '__editor_${++editorCounter}';
+		var nx:Float = c.x + 24;
+		var ny:Float = c.y + 24;
+		var obj:FlxBasic = null;
+		var typeName = "Dynamic";
+		var code:String = null;
+
+		switch (c.kind) {
+			case 1:
+				var s = new FlxSprite(nx, ny);
+				var short = shortImageKey(c.graphKey);
+				if (c.graphKey != null && Assets.exists(c.graphKey)) s.loadGraphic(c.graphKey);
+				else s.makeGraphic(80, 80, 0xFF7F00FF);
+				s.scale.set(c.sx, c.sy);
+				s.alpha = c.alpha;
+				s.color = c.color;
+				obj = s;
+				typeName = "flixel.FlxSprite";
+				code = c.graphKey != null
+					? 'new flixel.FlxSprite($nx, $ny, ' + (short != null ? 'Paths.image("${escapeHaxe(short)}")' : '"${escapeHaxe(c.graphKey)}"') + ')'
+					: 'new flixel.FlxSprite($nx, $ny)';
+			case 2:
+				var t = new FunkinText(nx, ny, c.fieldW, c.text, c.size);
+				t.fieldHeight = c.fieldH;
+				t.color = c.color;
+				t.alpha = c.alpha;
+				obj = t;
+				typeName = "funkin.backend.FunkinText";
+				code = 'new funkin.backend.FunkinText($nx, $ny, ${c.fieldW}, "${escapeHaxe(c.text)}", ${c.size})';
+			case 3:
+				obj = new FlxTypedGroup();
+				typeName = "flixel.group.FlxTypedGroup";
+				code = "new flixel.group.FlxTypedGroup()";
+			default:
+				obj = new FlxObject(nx, ny, c.w, c.h);
+				typeName = "flixel.FlxObject";
+				code = 'new flixel.FlxObject($nx, $ny, ${c.w}, ${c.h})';
+		}
+		if (obj is FlxObject) {
+			var oo:FlxObject = cast obj;
+			oo.angle = c.angle;
+			oo.scrollFactor.set(c.scrollX, c.scrollY);
+		}
+		obj.visible = c.visible;
+
+		parent.add(obj);
+		editorNames.set(obj, varName);
+		addedObjects.push({obj: obj, varName: varName, typeName: typeName, createCode: code, parent: parent});
+		selectObject(obj);
+		markEdited(obj);
+		runStatus = "Pasted";
+	}
+
+	/** Aligns every selected object on the given edge/center (mode: l, cx, r, t, cy, b) or spreads them (dh, dv). */
+	public function alignSelection(mode:String) {
+		var sel = [for (o in selectionList()) if (o is FlxObject) (cast o : FlxObject)];
+		if (sel.length < 2) { runStatus = "Select 2+ objects (Ctrl+click)"; return; }
+		var xs = [for (o in sel) o.x], rs = [for (o in sel) o.x + o.width];
+		var ys = [for (o in sel) o.y], bs = [for (o in sel) o.y + o.height];
+		function min(a:Array<Float>) { var m = a[0]; for (v in a) if (v < m) m = v; return m; }
+		function max(a:Array<Float>) { var m = a[0]; for (v in a) if (v > m) m = v; return m; }
+		switch (mode) {
+			case "l": for (o in sel) o.x = min(xs);
+			case "r": for (o in sel) o.x = max(rs) - o.width;
+			case "t": for (o in sel) o.y = min(ys);
+			case "b": for (o in sel) o.y = max(bs) - o.height;
+			case "cx": for (o in sel) o.x = (min(xs) + max(rs)) / 2 - o.width / 2;
+			case "cy": for (o in sel) o.y = (min(ys) + max(bs)) / 2 - o.height / 2;
+			case "dh", "dv":
+				var horiz = mode == "dh";
+				sel.sort(function(a, b) { var d = (horiz ? a.x : a.y) - (horiz ? b.x : b.y); return d < 0 ? -1 : (d > 0 ? 1 : 0); });
+				var span = horiz ? (max(rs) - min(xs)) : (max(bs) - min(ys));
+				var total = 0.0; for (o in sel) total += horiz ? o.width : o.height;
+				var gap = (span - total) / (sel.length - 1);
+				var pos = horiz ? min(xs) : min(ys);
+				for (o in sel) {
+					if (horiz) { o.x = pos; pos += o.width + gap; }
+					else { o.y = pos; pos += o.height + gap; }
+				}
+			default:
+		}
+		for (o in sel) markEdited(o);
+		runStatus = 'Aligned ${sel.length} objects';
+	}
+
+	/** Starts recording `seconds` of the object's live motion into its key track. */
+	public function bakeMotion(obj:FlxBasic, seconds:Float) {
+		baking = {obj: obj, keys: [], t: 0, nextT: 0, dur: Math.max(0.1, seconds)};
+		runStatus = 'Baking ${FlxMath.roundDecimal(seconds, 1)}s of motion...';
+	}
+
 	/** Records an animation operation for patch export. */
 	public function recordAnimOp(sprite:FlxBasic, op:String) {
 		var ops = animOps.get(sprite);
@@ -853,6 +1376,10 @@ class ConsoleInspector {
 		redoStack.resize(0);
 		snapBaseline = null;
 		snapPending = false;
+		adoptSnapshot = captureSnapshot();
+		namedSnapshots.clear();
+		selectedObjects.resize(0);
+		baking = null;
 		#if sys
 		if (!(state is MusicBeatState)) return;
 		var mbs:MusicBeatState = cast state;
@@ -1124,6 +1651,10 @@ class ConsoleInspector {
 			states.push(state);
 			state = state.subState;
 		}
+		if (stateLayerPtr.value > 0) {
+			var li = stateLayerPtr.value - 1;
+			return li < states.length ? pickObjectAt(cast states[li]) : null;
+		}
 		var i = states.length - 1;
 		while (i >= 0) {
 			var r = pickObjectAt(cast states[i]);
@@ -1133,9 +1664,42 @@ class ConsoleInspector {
 		return null;
 	}
 
+	/** True if (px,py) is inside convex quad a-b-c-d (same winding, world coords). */
+	static function pointInQuad(px:Float, py:Float, ax:Float, ay:Float, bx:Float, by:Float, cx:Float, cy:Float, dx:Float, dy:Float):Bool {
+		var s1 = (bx - ax) * (py - ay) - (px - ax) * (by - ay);
+		var s2 = (cx - bx) * (py - by) - (px - bx) * (cy - by);
+		var s3 = (dx - cx) * (py - cy) - (px - cx) * (dy - cy);
+		var s4 = (ax - dx) * (py - dy) - (px - dx) * (ay - dy);
+		return (s1 >= 0 && s2 >= 0 && s3 >= 0 && s4 >= 0) || (s1 <= 0 && s2 <= 0 && s3 <= 0 && s4 <= 0);
+	}
+
+	/**
+	 * Hit-test the sprite's real drawn footprint (offset/scale/angle-aware via _matrix)
+	 * rather than its raw x/y/w/h hitbox, in the object's own camera + scrollFactor space.
+	 */
+	function objectHitAt(m:FlxObject):Bool {
+		var mp = ImGui.getMousePos();
+		var wp = gizmo.screenToWorldPoint(FlxPoint.get(mp.x, mp.y), m.getDefaultCamera(), scrollFactorFor(m));
+		var hit = false;
+		var sprite:FlxSprite = m is FlxSprite ? cast m : null;
+		if (sprite != null && sprite.frame != null) {
+			@:privateAccess
+			var matrix = sprite._matrix;
+			var p1 = FlxPoint.get(0, 0).transform(matrix);
+			var p2 = FlxPoint.get(sprite.frame.frame.width, 0).transform(matrix);
+			var p3 = FlxPoint.get(sprite.frame.frame.width, sprite.frame.frame.height).transform(matrix);
+			var p4 = FlxPoint.get(0, sprite.frame.frame.height).transform(matrix);
+			hit = pointInQuad(wp.x, wp.y, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, p4.x, p4.y);
+			p1.put(); p2.put(); p3.put(); p4.put();
+		} else {
+			hit = wp.x >= m.x && wp.x <= m.x + m.width && wp.y >= m.y && wp.y <= m.y + m.height;
+		}
+		wp.put();
+		return hit;
+	}
+
 	function pickObjectAt(group:FlxGroup):FlxBasic {
 		if (group.members == null) return null;
-		var wp = FlxG.mouse.getWorldPosition();
 		var i = group.members.length - 1;
 		while (i >= 0) {
 			var m = group.members[i];
@@ -1143,7 +1707,7 @@ class ConsoleInspector {
 				var r = pickObjectAt(cast m);
 				if (r != null) return r;
 			} else if (m is FlxObject && m.visible && m.exists) {
-				if ((cast m : FlxObject).overlapsPoint(wp, false)) return m;
+				if (objectHitAt(cast m)) return m;
 			}
 			i--;
 		}
@@ -1270,25 +1834,105 @@ class ConsoleInspector {
 				snapTimer = 0;
 			}
 		}
-		if (!ImGuiIO.wantCaptureKeyboard) {
-			if (FlxG.keys.pressed.CONTROL) {
-				if (FlxG.keys.justPressed.Z) doUndo();
-				else if (FlxG.keys.justPressed.Y) doRedo();
-				else if (FlxG.keys.justPressed.D && selectedObject != null) { duplicateObject(cast selectedObject); runStatus = "Duplicated"; }
-				else if (FlxG.keys.justPressed.S) savePatch();
+		// wantTextInput (not wantCaptureKeyboard) so shortcuts work while a window is
+		// merely focused, but stay dead while typing in a text field.
+		if (!ImGuiIO.wantTextInput) {
+			var ctrl = ImGui.isKeyDown(ImGuiKey.LeftCtrl) || ImGui.isKeyDown(ImGuiKey.RightCtrl);
+			if (ctrl) {
+				if (ImGui.isKeyPressed(ImGuiKey.Z)) doUndo();
+				else if (ImGui.isKeyPressed(ImGuiKey.Y)) doRedo();
+				else if (ImGui.isKeyPressed(ImGuiKey.D) && selectedObject != null) {
+					var sel = selectionList();
+					if (sel.length > 1) for (o in sel) duplicateObject(o);
+					else duplicateObject(cast selectedObject);
+					runStatus = "Duplicated";
+				}
+				else if (ImGui.isKeyPressed(ImGuiKey.S)) savePatch();
+				else if (ImGui.isKeyPressed(ImGuiKey.C) && selectedObject is FlxBasic) copySelected();
+				else if (ImGui.isKeyPressed(ImGuiKey.V) && clipboard != null) pasteClipboard();
+				else if (ImGui.isKeyPressed(ImGuiKey.X) && selectedObject is FlxBasic) {
+					copySelected();
+					for (o in selectionList()) deleteInspectorObject(o);
+				}
 			}
-			else if (FlxG.keys.justPressed.DELETE && selectedObject != null) deleteInspectorObject(cast selectedObject);
+			else if (ImGui.isKeyPressed(ImGuiKey.Delete) && selectedObject != null) {
+				var sel = selectionList();
+				if (sel.length > 1) for (o in sel) deleteInspectorObject(o);
+				else deleteInspectorObject(cast selectedObject);
+			}
 		}
 	}
 
 	function tickKeyTracks(elapsed:Float) {
-		if (clickSelect && clickCaptureFor == null && !keyMouseConsumed && keyDrag == null
-			&& FlxG.mouse.justPressed && !ImGuiIO.wantCaptureMouse
+		// continue an in-progress object drag (grabbed by clicking it in the scene)
+		if (sceneDrag != null) {
+			if (!isAliveInScene(sceneDrag.obj) || !ImGui.isMouseDown(0)) {
+				if (sceneDrag.moved) {
+					markEdited(sceneDrag.obj);
+					for (oth in sceneDrag.others) markEdited(oth.o);
+				}
+				sceneDrag = null;
+			} else {
+				var mp = ImGui.getMousePos();
+				var wp = gizmo.screenToWorldPoint(FlxPoint.get(mp.x, mp.y), sceneDrag.cam, scrollFactorFor(sceneDrag.obj));
+				var nx = wp.x + sceneDrag.offX;
+				var ny = wp.y + sceneDrag.offY;
+				if (ImGui.isKeyDown(ImGuiKey.LeftCtrl)) {
+					nx = Math.fround(nx / gizmo.snapPos) * gizmo.snapPos;
+					ny = Math.fround(ny / gizmo.snapPos) * gizmo.snapPos;
+				} else {
+					var snapped = edgeSnapPos(nx, ny, sceneDrag.obj, sceneDrag.cam);
+					nx = snapped.x;
+					ny = snapped.y;
+				}
+				if (sceneDrag.obj.x != nx || sceneDrag.obj.y != ny) {
+					sceneDrag.obj.x = nx;
+					sceneDrag.obj.y = ny;
+					sceneDrag.moved = true;
+					for (oth in sceneDrag.others) {
+						oth.o.x = nx + oth.dx;
+						oth.o.y = ny + oth.dy;
+					}
+				}
+				wp.put();
+			}
+		}
+
+		if (clickSelect && clickCaptureFor == null && !keyMouseConsumed && keyDrag == null && sceneDrag == null
+			&& ImGui.isMouseClicked(0) && !ImGuiIO.wantCaptureMouse
 			&& !gizmo.positionActive && !gizmo.rotationActive && !gizmo.scaleActive) {
 			var pick = pickSceneObject();
-			if (pick != null) selectObject(pick);
+			if (pick != null) {
+				selectObject(pick, ImGui.isKeyDown(ImGuiKey.LeftCtrl) || ImGui.isKeyDown(ImGuiKey.RightCtrl));
+				if (pick is FlxText && ImGui.isMouseDoubleClicked(0)) {
+					sceneDrag = null;
+					textEditTarget = cast pick;
+					if (textEditPtr == null) textEditPtr = new ImGuiStringPtr("");
+					textEditPtr.value = textEditTarget.text;
+					textEditDirty = false;
+					textEditJustOpened = true;
+					textEditOpen.value = true;
+					var mp = ImGui.getMousePos();
+					textEditX = mp.x;
+					textEditY = mp.y;
+				} else if (pick is FlxObject) {
+					var o:FlxObject = cast pick;
+					var data = findInspectorObjectFor(pick);
+					var cam = data != null ? gizmo.prepareObjectCamera(data, pick) : FlxG.camera;
+					var mp = ImGui.getMousePos();
+					var wp = gizmo.screenToWorldPoint(FlxPoint.get(mp.x, mp.y), cam, scrollFactorFor(pick));
+					// dragging a member of a multi-selection moves the whole selection
+					var others:Array<{o:FlxObject, dx:Float, dy:Float}> = [];
+					if (selectedObjects.contains(pick))
+						for (m in selectionList())
+							if (m != pick && m is FlxObject)
+								others.push({o: cast m, dx: (cast m : FlxObject).x - o.x, dy: (cast m : FlxObject).y - o.y});
+					sceneDrag = {obj: o, cam: cam, offX: o.x - wp.x, offY: o.y - wp.y, moved: false, others: others};
+					wp.put();
+				}
+			}
 		}
-		if (clickCaptureFor != null && FlxG.mouse.justPressed && !ImGuiIO.wantCaptureMouse) {
+		if (clickCaptureFor != null && ImGui.isMouseClicked(0) && !ImGuiIO.wantCaptureMouse) {
 			var obj = clickCaptureFor;
 			clickCaptureFor = null;
 			var tr = getOrCreateTrack(obj);
@@ -1316,10 +1960,74 @@ class ConsoleInspector {
 		}
 		if (dead != null)
 			for (o in dead) keyTracks.remove(o);
+
+		// motion bake: record live poses until the duration elapses or the object dies
+		if (baking != null) {
+			var b = baking;
+			b.t += elapsed;
+			if (b.t >= b.nextT) {
+				b.keys.push(snapshotKey(b.obj, b.t));
+				b.nextT += BAKE_STEP;
+			}
+			if (b.t >= b.dur || !isAliveInScene(b.obj)) {
+				var tr = getOrCreateTrack(b.obj);
+				tr.keys = b.keys;
+				tr.mode = 0;
+				tr.sel = -1;
+				tr.playing = false;
+				tr.t = 0;
+				sortTrack(tr);
+				syncPatchTrack(tr);
+				markEdited(b.obj);
+				runStatus = 'Baked ${b.keys.length} keys (${FlxMath.roundDecimal(b.dur, 1)}s)';
+				baking = null;
+			}
+		}
 	}
 
 	inline function scrollFactorFor(obj:FlxBasic):FlxPoint
 		return obj is FlxObject ? (cast obj : FlxObject).scrollFactor : null;
+
+	/**
+	 * Snaps the dragged object's position so its edges/centers line up with other
+	 * scene objects within ~6 screen px. Only same-camera-space bounds are compared.
+	 */
+	function edgeSnapPos(nx:Float, ny:Float, obj:FlxObject, cam:FlxCamera):{x:Float, y:Float} {
+		var thr = 6.0 / (cam != null && cam.zoom != 0 ? cam.zoom : 1);
+		var excl = selectionList();
+		if (!excl.contains(obj)) excl.push(obj);
+		var candX:Array<Float> = [];
+		var candY:Array<Float> = [];
+		function gather(list:Array<InspectorObject>) {
+			for (m in list) {
+				if (m.obj is FlxObject && !excl.contains(m.obj) && m.obj.visible) {
+					var o:FlxObject = cast m.obj;
+					candX.push(o.x); candX.push(o.x + o.width / 2); candX.push(o.x + o.width);
+					candY.push(o.y); candY.push(o.y + o.height / 2); candY.push(o.y + o.height);
+				}
+				if (m.members != null) gather(m.members);
+			}
+		}
+		for (root in currentStateObjects) gather(root.members);
+		var offsX = [0.0, obj.width / 2, obj.width];
+		var offsY = [0.0, obj.height / 2, obj.height];
+		var bestX = thr + 1, snapX = nx, bestY = thr + 1, snapY = ny;
+		for (off in offsX) {
+			var v = nx + off;
+			for (c in candX) {
+				var d = Math.abs(v - c);
+				if (d < bestX) { bestX = d; snapX = c - off; }
+			}
+		}
+		for (off in offsY) {
+			var v = ny + off;
+			for (c in candY) {
+				var d = Math.abs(v - c);
+				if (d < bestY) { bestY = d; snapY = c - off; }
+			}
+		}
+		return {x: snapX, y: snapY};
+	}
 
 	/** Evaluates the track's position at its current time without applying it. */
 	public function evalTrackPos(tr:InspectorTrack):FlxPoint {
@@ -1339,7 +2047,7 @@ class ConsoleInspector {
 		// continue an in-progress key drag
 		if (keyDrag != null) {
 			var tr = keyTracks.get(keyDrag.obj);
-			if (tr == null || keyDrag.index >= tr.keys.length || !isAliveInScene(keyDrag.obj) || !FlxG.mouse.pressed) {
+			if (tr == null || keyDrag.index >= tr.keys.length || !isAliveInScene(keyDrag.obj) || !ImGui.isMouseDown(0)) {
 				if (tr != null && keyDrag.index < tr.keys.length) {
 					syncPatchTrack(tr);
 					markEdited(keyDrag.obj);
@@ -1436,7 +2144,7 @@ class ConsoleInspector {
 		// grab a marker (runs before scene click-select in tickKeyTracks)
 		if (hoverObj != null) {
 			keyMouseConsumed = true;
-			if (FlxG.mouse.justPressed) {
+			if (ImGui.isMouseClicked(0)) {
 				var tr = keyTracks.get(hoverObj);
 				tr.sel = hoverIdx;
 				selectObject(hoverObj);
@@ -1447,7 +2155,72 @@ class ConsoleInspector {
 					cam: data != null ? gizmo.prepareObjectCamera(data, hoverObj) : FlxG.camera
 				};
 			}
+			if (ImGui.isMouseClicked(1)) {
+				keyCtx = {obj: hoverObj, index: hoverIdx};
+				var tr = keyTracks.get(hoverObj);
+				keyCtxTimePtr.value = tr.keys[hoverIdx].t;
+				keyCtxEasePtr.value = 0;
+				ImGui.openPopup("##keyCtx");
+			}
 		}
+
+		drawKeyContextMenu();
+	}
+
+	/** Popup for right-clicked keyframe markers: ease, time, snap pose, duplicate, delete. */
+	function drawKeyContextMenu() {
+		if (!ImGui.beginPopup("##keyCtx")) return;
+		var tr = keyCtx == null ? null : keyTracks.get(keyCtx.obj);
+		if (tr == null || keyCtx.index >= tr.keys.length) {
+			ImGui.closeCurrentPopup();
+			keyCtx = null;
+			ImGui.endPopup();
+			return;
+		}
+		var k = tr.keys[keyCtx.index];
+		ImGui.text('Key ${keyCtx.index} @ ${FlxMath.roundDecimal(k.t, 2)}s');
+		ImGui.separator();
+		if (ImGui.dragFloat("time##keyCtx", keyCtxTimePtr, 0.01, 0, 0, "%.2f")) {
+			k.t = keyCtxTimePtr.value;
+			sortTrack(tr);
+			keyCtx.index = tr.keys.indexOf(k);
+			syncPatchTrack(tr);
+			markEdited(keyCtx.obj);
+		}
+		ImGui.setNextItemWidth(170);
+		var names = getEaseNames();
+		if (keyCtxEasePtr.value <= 0) keyCtxEasePtr.value = names.indexOf(k.ease);
+		if (keyCtxEasePtr.value < 0) keyCtxEasePtr.value = 0;
+		if (ImGui.combo("ease to next##keyCtx", keyCtxEasePtr, names)) {
+			k.ease = names[keyCtxEasePtr.value];
+			syncPatchTrack(tr);
+			markEdited(keyCtx.obj);
+		}
+		if (ImGui.menuItem("Snap pose to object")) {
+			var nk = snapshotKey(keyCtx.obj, k.t);
+			k.x = nk.x; k.y = nk.y; k.angle = nk.angle;
+			k.scaleX = nk.scaleX; k.scaleY = nk.scaleY; k.alpha = nk.alpha;
+			syncPatchTrack(tr);
+			markEdited(keyCtx.obj);
+		}
+		if (ImGui.menuItem("Duplicate")) {
+			var nk:InspectorKeyframe = {t: k.t + 0.25, x: k.x, y: k.y, angle: k.angle, scaleX: k.scaleX, scaleY: k.scaleY, alpha: k.alpha, ease: k.ease};
+			tr.keys.push(nk);
+			sortTrack(tr);
+			tr.sel = keyCtx.index = tr.keys.indexOf(nk);
+			keyCtxTimePtr.value = nk.t;
+			syncPatchTrack(tr);
+			markEdited(keyCtx.obj);
+		}
+		if (ImGui.menuItem("Delete")) {
+			tr.keys.remove(k);
+			tr.sel = -1;
+			syncPatchTrack(tr);
+			markEdited(keyCtx.obj);
+			keyCtx = null;
+			ImGui.closeCurrentPopup();
+		}
+		ImGui.endPopup();
 	}
 
 	public function deleteInspectorObject(obj:FlxBasic) {

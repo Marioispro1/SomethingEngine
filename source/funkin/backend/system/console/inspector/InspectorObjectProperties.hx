@@ -33,6 +33,7 @@ class InspectorObjectProperties {
 	var __edited:Bool = false;
 	var renamePtr = new ImGuiStringPtr("");
 	var fieldFilter = new ImGuiStringPtr("");
+	var bakeSecsPtr = new ImGuiFloatPtr(3);
 	var animNewName = new ImGuiStringPtr("newAnim");
 	var animNewPrefix = new ImGuiStringPtr("");
 	var animNewFrames = new ImGuiStringPtr("");
@@ -398,6 +399,14 @@ class InspectorObjectProperties {
 			inspector.markEdited(basic);
 		}
 		if (ImGui.isItemHovered()) ImGui.setTooltip("round all key times to the nearest beat of the current Conductor.bpm");
+		ImGui.sameLine();
+		ImGui.setNextItemWidth(52);
+		ImGui.dragFloat("##kfBakeSecs", bakeSecsPtr, 0.1, 0.5, 30, "%.1fs");
+		ImGui.sameLine();
+		var isBaking = inspector.baking != null && inspector.baking.obj == basic;
+		if (ImGui.button(isBaking ? "Baking!##kf" : "Bake##kf") && inspector.baking == null)
+			inspector.bakeMotion(basic, bakeSecsPtr.value);
+		if (ImGui.isItemHovered()) ImGui.setTooltip("record this object's live motion for N seconds into keyframes (replaces the track)");
 
 		// timeline row
 		if (tr.keys.length > 0) {

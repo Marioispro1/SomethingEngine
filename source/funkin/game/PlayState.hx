@@ -24,6 +24,7 @@ import funkin.backend.scripting.events.gameplay.*;
 import funkin.backend.scripting.events.note.*;
 import funkin.backend.system.Conductor;
 import funkin.backend.system.RotatingSpriteGroup;
+import funkin.backend.system.VideoRenderer;
 import funkin.editors.SaveWarning;
 import funkin.editors.charter.Charter;
 import funkin.editors.charter.CharterSelection;
@@ -83,6 +84,15 @@ class PlayState extends MusicBeatState
 	 * Whenever Charting Mode is enabled for this song.
 	 */
 	public static var chartingMode:Bool = false;
+
+	public var songStartTime(get, never):Float;
+
+	inline function get_songStartTime():Float
+		return VideoRenderer.armed ? VideoRenderer.settings.startMs
+			: (chartingMode && Charter.startHere) ? Charter.startTime : 0;
+
+	public var renderHUD:funkin.editors.render.VideoRenderHUD = null;
+
 	/**
 	 * Whenever the song is started with opponent mode on.
 	 */
@@ -863,7 +873,7 @@ class PlayState extends MusicBeatState
 		}
 
 		for(str in strumLines)
-			str.generate(str.data, (chartingMode && Charter.startHere) ? Charter.startTime : null);
+			str.generate(str.data, songStartTime > 0 ? songStartTime : null);
 
 		FlxG.camera.follow(camFollow, LOCKON, Flags.DEFAULT_CAMERA_FOLLOW_SPEED);
 		FlxG.camera.zoom = defaultCamZoom;
@@ -1030,8 +1040,24 @@ class PlayState extends MusicBeatState
 			if (gameAndCharsEvent("onStartCountdown", new CancellableEvent()).cancelled) return;
 		}
 
+		if (VideoRenderer.requested && !VideoRenderer.active) {
+			if (!VideoRenderer.settings.includeCountdown) introLength = 0;
+
+			VideoRenderer.audioAssets = collectRenderAudio();
+			VideoRenderer.begin(songStartTime - Conductor.crochet * introLength,
+				inst != null ? inst.length : Math.POSITIVE_INFINITY,
+				'${SONG.meta.name} - $difficulty${variation != null && variation != "" ? " ($variation)" : ""}');
+
+			if (VideoRenderer.settings.botplay) {
+				for (strumLine in strumLines.members) strumLine.cpu = true;
+				canDie = canDadDie = false;
+			}
+
+			add(renderHUD = new funkin.editors.render.VideoRenderHUD(SONG.meta.name, difficulty));
+		}
+
 		startedCountdown = true;
-		Conductor.songPosition = 0;
+		Conductor.songPosition = songStartTime;
 		Conductor.songPosition -= Conductor.crochet * introLength - Conductor.songOffset;
 
 		if(introLength > 0) {
@@ -1041,6 +1067,20 @@ class PlayState extends MusicBeatState
 			}, introLength);
 		}
 		gameAndCharsCall("onPostStartCountdown");
+	}
+
+	function collectRenderAudio():Array<String> {
+		var tracks = [Paths.inst(SONG.meta.name, difficulty, SONG.meta.instSuffix)];
+
+		if (SONG.meta.needsVoices)
+			tracks.push(Paths.voices(SONG.meta.name, difficulty, SONG.meta.vocalsSuffix));
+
+		if (SONG.strumLines != null)
+			for (line in SONG.strumLines)
+				if (line.vocalsSuffix != null && line.vocalsSuffix != "")
+					tracks.push(Paths.voices(SONG.meta.name, difficulty, line.vocalsSuffix));
+
+		return tracks;
 	}
 
 	/**
@@ -1100,10 +1140,12 @@ class PlayState extends MusicBeatState
 
 		inst.onComplete = endSong;
 
-		var time = (chartingMode && Charter.startHere) ? Charter.startTime : 0;
-		for (strumLine in strumLines.members) strumLine.vocals.play(true, time);
-		vocals.play(true, time);
-		inst.play(true, time);
+		var time = songStartTime;
+		if (!VideoRenderer.active) {
+			for (strumLine in strumLines.members) strumLine.vocals.play(true, time);
+			vocals.play(true, time);
+			inst.play(true, time);
+		}
 
 		updateDiscordPresence();
 
@@ -1111,6 +1153,8 @@ class PlayState extends MusicBeatState
 	}
 
 	public override function destroy() {
+		VideoRenderer.finish();
+
 		var notNull = stage != null;
 		if (notNull) PlayState.instance.gameAndCharsCall("onStageDestroy", [stage]);
 		scripts.call("destroy");
@@ -1460,8 +1504,11 @@ class PlayState extends MusicBeatState
 			updateIconPositions();
 
 		if (startingSong) {
-			if (startedCountdown && (Conductor.songPosition += Conductor.songOffset + elapsed * 1000) >= 0) {
-				Conductor.songPosition = Conductor.songOffset;
+			if (VideoRenderer.active) {
+				if (startedCountdown && Conductor.songPosition >= songStartTime) startSong();
+			}
+			else if (startedCountdown && (Conductor.songPosition += Conductor.songOffset + elapsed * 1000) >= songStartTime) {
+				Conductor.songPosition = songStartTime + Conductor.songOffset;
 				startSong();
 			}
 		}
@@ -1481,7 +1528,19 @@ class PlayState extends MusicBeatState
 		while(events.length > 0 && events.last().time <= Conductor.songPosition)
 			executeEvent(events.pop());
 
-		if (controls.PAUSE && startedCountdown && canPause)
+		if (VideoRenderer.active) {
+			if (VideoRenderer.failed) exitRender();
+			else if (startingSong || !VideoRenderer.finished) VideoRenderer.advance();
+			else {
+				endSong();
+				if (VideoRenderer.active) exitRender();
+			}
+		}
+
+		if (VideoRenderer.active) {
+			if (controls.BACK || controls.PAUSE) exitRender();
+		}
+		else if (controls.PAUSE && startedCountdown && canPause)
 			pauseGame();
 
 		if (generatedMusic)
@@ -1820,7 +1879,7 @@ class PlayState extends MusicBeatState
 		inst.stop();
 		vocals.stop();
 
-		if (validScore) {
+		if (validScore && !VideoRenderer.active) {
 			#if !switch
 			FunkinSave.setSongHighscore(SONG.meta.name, difficulty, variation, {
 				score: songScore,
@@ -1848,6 +1907,11 @@ class PlayState extends MusicBeatState
 	 * Immediately switches to the next song, or goes back to the Story/Freeplay menu.
 	 */
 	public function nextSong() {
+		if (VideoRenderer.active) {
+			exitRender();
+			return;
+		}
+
 		if (isStoryMode) {
 			campaignScore += songScore;
 			campaignMisses += misses;
@@ -1887,6 +1951,12 @@ class PlayState extends MusicBeatState
 			FlxG.switchState(new funkin.editors.charter.Charter(SONG.meta.name, difficulty, variation, false));
 		else
 			FlxG.switchState(new FreeplayState());
+	}
+
+	public function exitRender() {
+		VideoRenderer.finish();
+		MusicBeatState.skipTransIn = MusicBeatState.skipTransOut = true;
+		FlxG.switchState(new funkin.editors.render.VideoRenderSelection());
 	}
 
 	public function registerSmoothTransition() {

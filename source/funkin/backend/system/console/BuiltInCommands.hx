@@ -124,6 +124,28 @@ class BuiltInCommands {
 	static var goToModState = new FuncCommand("goToModState", "[name]", "(switches state to a custom ModState)", function(args) {
 		FlxG.switchState(new ModState(args[0]));
 	});
+	static var goToState = new FuncCommand("goToState", "[class]", "(switches to any state by class name, e.g. goToState PlayState or funkin.menus.MainMenuState)", function(args) {
+		var name = args[0];
+		if (name == null || name == "") {
+			Logs.error("Usage: goToState <className>");
+			return;
+		}
+		var cls:Class<Dynamic> = Type.resolveClass(name);
+		if (cls == null)
+			for (p in ["funkin.menus.", "funkin.game.", "funkin.editors.", "funkin.backend.system."]) {
+				cls = Type.resolveClass(p + name);
+				if (cls != null) break;
+			}
+		if (cls == null) {
+			Logs.error('No state class found for "$name".');
+			return;
+		}
+		try {
+			FlxG.switchState(cast Type.createInstance(cls, []));
+		} catch(e) {
+			Logs.error('Could not switch to $name: $e');
+		}
+	});
 
 	static var goToCharter = new FuncCommand("goToCharter", "[song] [diff] [variation]", "(opens chart editor, inputting nothing will load existing song)", function(args) {
 		if (args.length == 0) {
