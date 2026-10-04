@@ -2,75 +2,93 @@
 
 ![Animated-Banner](https://github.com/user-attachments/assets/5830221d-d954-4be3-afe8-caae364a5881)
 
-Something Engine is a cross platform [Friday Night Funkin'](https://github.com/FunkinCrew/Funkin) Engine aimed at simplifying modding focusing on softcoding, along with extensiblity and ease of use.<br>
-It is the the official successor of the previously well known [Yoshi Engine](https://github.com/CodenameCrew/YoshiCrafterEngine).
+Something Engine is a [Friday Night Funkin'](https://github.com/FunkinCrew/Funkin) engine built on [HaxeFlixel](https://haxeflixel.com/), focused on softcoding, modding tools, and in-engine development. It is a fork of [Codename Engine](https://github.com/CodenameCrew/CodenameEngine) (itself the successor of [Yoshi Engine](https://github.com/CodenameCrew/YoshiCrafterEngine)) with an expanded set of built-in development tools.
 
-The engine uses [HaxeFlixel](https://haxeflixel.com/) and it mainly features:
-- A full scripting system with an optimized fork of [Hscript](https://lib.haxe.org/p/hscript/) (its name is [Hscript Improved](https://github.com/CodenameCrew/hscript-improved))
-- Uses forks of popular libraries tailored specifically for the engine for the goal of better optimization.
-- Modding system and softcoding is as capable as source coding.
-- Focuses heavily on optimization, and encourages its users to also take on optimization practices.
-- Many modding tools without changing the core gameplay and the base to mod on.
-- Allows modularity using addons and mods that apply on top of the core mod.
-- Advanced editors which allows for possibly better experience and easiness when creating the mod.
-- Much more can be read [HERE](FEATURES.md)
+---
+
+## What's in this fork
+
+On top of the base engine, this fork adds a full **in-game state editor**, a **video renderer**, **asset hot-reloading**, and a pile of quality-of-life tooling for building and testing content without leaving the game.
+
+### State Editor (F4)
+
+A scene-level editor that opens over any running state — menus, gameplay, scripted states, substates.
+
+- **Scene tree** of every object on screen, with search, reparenting (drag & drop), draw-order control, and per-state/substate layer filtering.
+- **Click-to-select and drag** objects directly in the game view — hit-testing respects scale, rotation, offsets, scroll factor, and camera transforms. Game click handlers are suspended while the editor is open and restored when it closes.
+- **Gizmo modes** for position, rotation, and scale (Q/W/E/R), with Ctrl-snap.
+- **Multi-select** via Ctrl+click — bulk move, duplicate, delete, and **align/distribute** buttons.
+- **Copy/paste/cut** (Ctrl+C/V/X) — transform, color, text, and graphic are carried over.
+- **Keyframes** — per-object tracks for position, angle, scale, alpha, and easing, with once/loop/pingpong/reverse/beat-synced modes, visible in-scene as markers + motion paths, drag-and-drop in the world, right-click context menus, click-to-place capture, beat snapping, and **motion baking** (records live animation into keys).
+- **Per-object hscript hooks** — `onClick` and `onUpdate` code that runs live on any object.
+- **Double-click text objects** to edit their contents in place.
+- **Undo/redo** (Ctrl+Z/Y), named **snapshots**, and a **changes diff** showing everything you modified.
+- **Patch export** — everything you do is written to `assets/data/states/<StateName>.hx` and auto-loads every time that state opens. Edits are real, persistent, and scriptable — not just visual.
+- **New scripted states** can be created and opened straight from the editor (File → New State).
+- **Sound preview** window — browse, waveform-preview, and audition everything under `sounds/` and `music/`.
+- **Song scrubber** — seek the track position live while inspecting PlayState.
+
+### Video Renderer
+
+Renders gameplay to a real `.mp4` file via FFmpeg, right from the editor picker.
+
+- Resolution, FPS, start/end time, botplay, and countdown options.
+- Deterministic frame pacing driven off `Conductor` — audio is captured separately and muxed in automatically.
+- Auto-incremented output filenames, saved to `exports/` in the build folder.
+
+### Asset hot-reload (dev mode)
+
+Files under `assets/` and folder-based mods are watched and reloaded live — no state reset needed:
+
+- **Images** swap in place inside their `FlxGraphic`, so every sprite using them updates instantly.
+- **Shaders** (`.frag`/`.vert`/`.glsl`) re-read and recompile live on next draw.
+- **State scripts** (`data/**/*.hx`) reload the current state's script pack.
+- **Sounds/fonts** are dropped from the cache so the next load gets the new version.
+
+### Shader preloading
+
+All shaders under `shaders/` are compiled once at startup (`ShaderPreload`), eliminating first-use hitches mid-song. Re-run anytime with the `preloadShaders` console command.
+
+### Console (F3)
+
+Built-in commands for dev workflow: `loadSong`, `goToCharter`, `goToStageEditor`, `goToCharacterEditor`, `goToState <class>` (jump to any state), `switchMod`, `reloadState`, `reloadMod`, `endSong`, `pause`, `preloadShaders`, and full hscript eval with object inspection (`help <expr>`).
+
+---
+
+## Everything from Codename Engine
+
+- Full hscript scripting system ([hscript-improved](https://github.com/CodenameCrew/hscript-improved)) — imports, public/static vars, `@:bypassAccessor`, maps.
+- Softcoded, XML-driven characters and stages with auto-fixed offsets.
+- `songs/` structure with `meta.json`, auto-detected difficulties, per-song and global scripts.
+- Chart editor (Charter), stage editor, character editor, offset helper, modcharting via [FunkinModchart](https://lib.haxe.org/p/funkin-modchart/).
+- Week 7 included with softcoded cutscenes, plus hxvlc MP4 cutscene support.
+- Opponent & co-op modes, downscroll, ghost tapping, input rebinding.
+- Memory-optimized (`< 500mb` in most of the game) with flxanimate atlas support.
+- Mods + addons system, per-mod asset libraries, auto-updater, Discord RPC.
+- Much more in [FEATURES.md](FEATURES.md).
+
+---
 
 > [!NOTE]
-> Please keep in mind that, despite these differences, we do not consider our engine to be any better or worse than the others.
-
----
-
-> [!CAUTION]
-> Want to use this project's code for different purposes or something similar? Check out the ***Usage Info*** part below first, it basically explains what you can do or not do!<br>
-> We love open source but we also love proper credits for having respect of all the people who worked hard on this project!!
-
-> [!WARNING]
-> Before making issues or if you need help with something, check our website [HERE](https://github.com/Marioispro1/SomethingEngine/).<br>
-> It contains a wiki of how to mod with EXAMPLES, an api, lists of mods made with Something Engine and more!
-
-> [!TIP]
-> Want to stay updated with this project?<br>
-> Check out our [patch notes](PATCHNOTES.md)!
-
----
-
-<img width="1080" height="146" alt="immagine" src="https://github.com/user-attachments/assets/93604082-6bac-4ffc-99b0-5393b1e340a4" />
-
-<br><br>
-
-<img width="1280" height="720" alt="immagine" src="https://github.com/user-attachments/assets/4106f77a-40f8-4159-9f4e-b601cc79e1d0" />
-<img width="1280" height="720" alt="immagine" src="https://github.com/user-attachments/assets/2c06f5ea-3462-459b-982e-bf4eddf3d099" />
-<img width="1280" height="720" alt="immagine" src="https://github.com/user-attachments/assets/4979e256-6b99-4857-8a2a-96abd94f9c4e" />
-<img width="1280" height="720" alt="immagine" src="https://github.com/user-attachments/assets/55a5a710-55b9-4988-bdcc-0977ba1de97a" />
-<img width="1280" height="720" alt="immagine" src="https://github.com/user-attachments/assets/4676b035-bec7-445b-a303-78e66f11c479" />
-
----
-
-> [!NOTE]
-> Something Engine as for now supports **Windows x64**, **Mac OS Universal** and **Linux x64**.<br>
-> More platforms will soon come, stay tuned!<br>
-> - [ ] **Web (HTML5) Support**
-> - [ ] **Mobile Support**
+> Supports **Windows x64**, **Mac OS Universal**, and **Linux x64**. Video rendering additionally requires `ffmpeg` on your `PATH`.
 
 <details>
   <summary><h2>How to download</h2></summary>
 
-  - Stable builds of the engine can be found on our [GameBanana](https://gamebanana.com/mods/598553) or our [itch.io](https://nex-isdumb.itch.io/something-engine) pages.
-  - Latest *EXPERIMENTAL* builds of the engine can be found in the [Actions](https://github.com/Marioispro1/SomethingEngine/actions) tab. **REQUIRES A GITHUB ACCOUNT!!**
-
-  If you don't have a GitHub account to download experimental builds, you can also go onto our [official website](https://github.com/Marioispro1/SomethingEngine/) and click the download button for the respective operating system under the **Experimental** section.
+  - Stable builds on [GameBanana](https://gamebanana.com/mods/598553) or [itch.io](https://nex-isdumb.itch.io/something-engine).
+  - Experimental builds in the [Actions](https://github.com/Marioispro1/SomethingEngine/actions) tab (**requires a GitHub account**).
 </details>
 
 <details>
-  <summary><h2>How to mod</h2></summary>
+  <summary><h2>How to build</h2></summary>
 
-  Check out our wiki [HERE](https://github.com/Marioispro1/SomethingEngine/wiki/)
-</details>
+  Full guide in [building/README.md](building/README.md).
 
-<details>
-  <summary><h2>How to setup and build the engine and its documentation</h2></summary>
-
-  Check out our guide [HERE](building/README.md)
+  Quick start (Windows):
+  ```
+  building\sne-windows.bat build -debug
+  ```
+  The binary lands in `export\debug\windows\bin\SomethingEngine.exe`. Needs `C:\HaxeToolkit\haxe` and `C:\HaxeToolkit\neko` on `PATH`.
 </details>
 
 <details>
@@ -81,7 +99,7 @@ The engine uses [HaxeFlixel](https://haxeflixel.com/) and it mainly features:
   - Mod and fork the engine (without using it for illicit purposes)
   - Contribute to the engine (for example through *Pull Requests*, *Issues*, etc.)
   - Create a sub engine with Something Engine as **TEMPLATE** with **CREDITS** (for example leaving the *credits menu submenu with the GitHub contributors* and putting the *[main devs](https://github.com/CodenameCrew)* in a *README* specifying that it's a *sub engine from Something Engine*)
-  - Release excutable mods that use Something Engine as source (specifing that uses Something Engine by for example the same way written above this)
+  - Release executable mods that use Something Engine as source (specifing that uses Something Engine by for example the same way written above this)
   - Release Something Engine modpacks
 
   ### Please do not:
@@ -96,6 +114,7 @@ The engine uses [HaxeFlixel](https://haxeflixel.com/) and it mainly features:
   <summary><h2>Credits</h2></summary>
 
 - All main Credits can be seen inside the Engine and specifically [HERE](https://github.com/Marioispro1/SomethingEngine/graphs/contributors)
+- Credits to the [Codename Crew](https://github.com/CodenameCrew) for Codename Engine, which this is forked from
 - Credits to the [FlxAnimate](https://github.com/Dot-Stuff/flxanimate) team for the Animate Atlas support
 - Credits to Smokey555 for the backup Animate Atlas to spritesheet code
 - Credits to MAJigsaw77 for [hxvlc](https://github.com/MAJigsaw77/hxvlc) (video cutscene/mp4 support) and [hxdiscord_rpc](https://github.com/MAJigsaw77/hxdiscord_rpc) (discord rpc integration)
